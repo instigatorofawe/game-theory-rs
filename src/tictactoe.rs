@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tile {
@@ -67,9 +68,8 @@ impl Display for Board {
     }
 }
 
-impl Board {
-    /// Default initialization
-    pub fn new() -> Self {
+impl Default for Board {
+    fn default() -> Self {
         use Tile::Empty;
         Board {
             tiles: [
@@ -77,8 +77,10 @@ impl Board {
             ],
         }
     }
+}
 
-    /// Computes ternary hash of board
+impl Board {
+    /// Computes board from ternary hash
     pub fn from_hash(hash: u32) -> Self {
         let tiles: [Tile; 9] = [0; 9]
             .iter()
@@ -156,6 +158,7 @@ impl Board {
         *hashes.iter().min().unwrap()
     }
 
+    /// Computes naive ternary hash of board
     pub fn hash(&self) -> u32 {
         self.tiles
             .iter()
@@ -258,69 +261,103 @@ impl Board {
     }
 }
 
-pub struct GameTree {
+pub struct SolutionTable {
     value_table: HashMap<u32, i8>,
 }
 
-impl GameTree {
-    pub fn build() -> Self {
-        use Tile::*;
-        let mut value_table = HashMap::<u32, i8>::new();
+impl Default for SolutionTable {
+    fn default() -> Self {
+        Self {
+            value_table: HashMap::new(),
+        }
+    }
+}
 
-        fn evaluate_recursive(value_table: &mut HashMap<u32, i8>, board: Board) -> i8 {
-            let hash = board.invariant_hash();
-            if value_table.contains_key(&hash) {
-                *value_table.get(&hash).unwrap()
-            } else {
-                // Check if leaf node
-                match board.winner() {
-                    X => {
-                        let value = 1;
-                        value_table.insert(hash, value);
+impl SolutionTable {
+    /// Builds full solution table
+    pub fn build() -> Self {
+        let mut result = SolutionTable {
+            value_table: HashMap::new(),
+        };
+        let root = Board::default();
+        result.evaluate_recursive(root);
+
+        #[cfg(test)]
+        println!("{}", result.value_table.len());
+
+        result
+    }
+
+    fn evaluate_recursive(&mut self, board: Board) -> i8 {
+        use Tile::*;
+        let hash = board.invariant_hash();
+        if self.value_table.contains_key(&hash) {
+            *self.value_table.get(&hash).unwrap()
+        } else {
+            // Check if leaf node
+            match board.winner() {
+                X => {
+                    let value = 1;
+                    self.value_table.insert(hash, value);
+                    return value;
+                }
+                O => {
+                    let value = -1;
+                    self.value_table.insert(hash, value);
+                    return value;
+                }
+                _ => {
+                    if board.empty().is_empty() {
+                        let value = 0;
+                        self.value_table.insert(hash, value);
                         return value;
-                    }
-                    O => {
-                        let value = -1;
-                        value_table.insert(hash, value);
-                        return value;
-                    }
-                    _ => {
-                        if board.empty().is_empty() {
-                            let value = 0;
-                            value_table.insert(hash, value);
-                            return value;
-                        }
                     }
                 }
-
-                // Otherwise evaluate children recursively
-                let children: Vec<Board> = board.empty().iter().map(|i| board.act(*i)).collect();
-                let child_values: Vec<i8> = children
-                    .into_iter()
-                    .map(|x| evaluate_recursive(value_table, x))
-                    .collect();
-
-                let value = match board.turn() {
-                    X => *child_values.iter().max().unwrap(),
-                    O => *child_values.iter().min().unwrap(),
-                    _ => panic!("Impossible branch, invalid turn"),
-                };
-
-                value_table.insert(hash, value);
-                value
             }
+
+            // Otherwise evaluate children recursively
+            let children: Vec<Board> = board.empty().iter().map(|i| board.act(*i)).collect();
+            let child_values: Vec<i8> = children
+                .into_iter()
+                .map(|x| self.evaluate_recursive(x))
+                .collect();
+
+            let value = match board.turn() {
+                X => *child_values.iter().max().unwrap(),
+                O => *child_values.iter().min().unwrap(),
+                _ => panic!("Impossible branch, invalid turn"),
+            };
+
+            self.value_table.insert(hash, value);
+            value
         }
-
-        let root = Board::new();
-        evaluate_recursive(&mut value_table, root);
-        #[cfg(test)]
-        println!("{}", value_table.len());
-
-        GameTree { value_table }
     }
 
     pub fn get(&self, invariant_hash: &u32) -> Option<i8> {
         self.value_table.get(invariant_hash).copied()
+    }
+
+    pub fn solve(&mut self, board: &Board) -> usize {
+        use Tile::*;
+        let candidates = board.empty();
+        let candidate_values: Vec<i8> = candidates
+            .iter()
+            .map(|i| self.evaluate_recursive(board.act(*i)))
+            .collect();
+
+        let (argmax, _) = candidates.iter().zip(candidate_values.into_iter()).fold(
+            (0, 2),
+            |(argmax, max), (index, value)| {
+                if max > value && board.turn() == X {
+                    (argmax, max)
+                } else if max < value && board.turn() == O {
+                    (argmax, max)
+                } else {
+                    (*index, value)
+                }
+            },
+        );
+        argmax
     }
 }
 
@@ -328,40 +365,20 @@ fn main() {
     use std::io::stdin;
     use Tile::*;
 
-    let mut board = Board::new();
-    let solution = GameTree::build();
+    let mut board = Board::default();
+    let mut solution = SolutionTable::default();
 
     println!("{board}");
 
     while board.winner() == Empty && !board.empty().is_empty() {
         if board.turn() == X {
             let mut input_buffer = String::new();
-            stdin().read_line(&mut input_buffer);
+            let _ = stdin().read_line(&mut input_buffer);
             let i = input_buffer.trim().parse::<usize>().unwrap();
             board = board.act(i);
             // Read input
         } else {
-            let candidates = board.empty();
-            let candidate_values: Vec<i8> = candidates
-                .iter()
-                .filter_map(|i| solution.get(&board.act(*i).invariant_hash()))
-                .collect();
-
-            println!("{:?}", candidates);
-            println!("{:?}", candidate_values);
-
-            let (argmin, _) = candidates.iter().zip(candidate_values.into_iter()).fold(
-                (0, 2),
-                |(min_index, min_value), (index, value)| {
-                    if min_value < value {
-                        (min_index, min_value)
-                    } else {
-                        (*index, value)
-                    }
-                },
-            );
-
-            println!("{argmin}");
+            let argmin = solution.solve(&board);
             board = board.act(argmin);
         }
 
@@ -414,7 +431,7 @@ mod tests {
     #[test]
     fn test_evaluate_winner() {
         use Tile::*;
-        let board = Board::new();
+        let board = Board::default();
         assert_eq!(board.winner(), Empty);
 
         let board = Board {
@@ -436,7 +453,7 @@ mod tests {
     #[test]
     fn test_build_tree() {
         use Tile::*;
-        let tree = GameTree::build();
+        let tree = SolutionTable::build();
         assert_eq!(*tree.value_table.get(&0).unwrap(), 0);
         assert_eq!(
             *tree
