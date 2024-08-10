@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+mod utils;
+
+use hashbrown::HashMap;
 use std::fmt::Display;
-use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tile {
@@ -83,7 +84,7 @@ impl Board {
     /// Computes board from ternary hash
     pub fn from_hash(hash: u32) -> Self {
         let tiles: [Tile; 9] = [0; 9]
-            .iter()
+            .into_iter()
             .scan(hash, |a, _| {
                 let result = Tile::from_hash(*a % 3);
                 *a /= 3;
@@ -100,7 +101,7 @@ impl Board {
         let mut hashes = Vec::with_capacity(8);
         let mut board: Board = self.clone();
         let mut rotated_hashes: Vec<u32> = [0; 3]
-            .iter()
+            .into_iter()
             .map(|_| {
                 board = board.rotate();
                 board.hash()
@@ -155,7 +156,7 @@ impl Board {
             .hash(),
         );
 
-        *hashes.iter().min().unwrap()
+        hashes.into_iter().min().unwrap()
     }
 
     /// Computes naive ternary hash of board
@@ -174,8 +175,8 @@ impl Board {
     pub fn rotate(&self) -> Self {
         Board {
             tiles: [2, 5, 8, 1, 4, 7, 0, 3, 6]
-                .iter()
-                .map(|i| self.tiles[*i].clone())
+                .into_iter()
+                .map(|i| self.tiles[i].clone())
                 .collect::<Vec<Tile>>()
                 .try_into()
                 .unwrap(),
@@ -316,15 +317,15 @@ impl SolutionTable {
             }
 
             // Otherwise evaluate children recursively
-            let children: Vec<Board> = board.empty().iter().map(|i| board.act(*i)).collect();
+            let children: Vec<Board> = board.empty().into_iter().map(|i| board.act(i)).collect();
             let child_values: Vec<i8> = children
                 .into_iter()
                 .map(|x| self.evaluate_recursive(x))
                 .collect();
 
             let value = match board.turn() {
-                X => *child_values.iter().max().unwrap(),
-                O => *child_values.iter().min().unwrap(),
+                X => child_values.into_iter().max().unwrap(),
+                O => child_values.into_iter().min().unwrap(),
                 _ => panic!("Impossible branch, invalid turn"),
             };
 
@@ -345,15 +346,13 @@ impl SolutionTable {
             .map(|i| self.evaluate_recursive(board.act(*i)))
             .collect();
 
-        let (argmax, _) = candidates.iter().zip(candidate_values.into_iter()).fold(
+        let (argmax, _) = candidates.into_iter().zip(candidate_values).fold(
             (0, 2),
             |(argmax, max), (index, value)| {
-                if max > value && board.turn() == X {
-                    (argmax, max)
-                } else if max < value && board.turn() == O {
+                if (max > value && board.turn() == X) || (max < value && board.turn() == O) {
                     (argmax, max)
                 } else {
-                    (*index, value)
+                    (index, value)
                 }
             },
         );
