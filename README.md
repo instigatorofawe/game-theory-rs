@@ -11,3 +11,5 @@ An implementation of various solution concepts (minimax, Nash) for some toy game
 - No Limit Texas Hold'Em
     - Hand evaluator
     - Equity calculator
+    - Push-fold preflop solver
+    - ICM calculator
