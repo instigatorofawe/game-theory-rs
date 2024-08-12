@@ -44,7 +44,6 @@ pub fn enumerate_combos<T: Clone + Send + Sync>(items: Vec<T>, k: usize) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
 
     #[test]
     fn test_enumerate_combos() {
@@ -59,27 +58,5 @@ mod tests {
             3,
         );
         assert_eq!(x.len(), choose(16, 3));
-    }
-
-    #[test]
-    fn benchmark_combos() {
-        let start = Instant::now();
-        // Enumerate all combos up to n for all k up to n-1
-        let combos: Vec<usize> = (3_usize..20)
-            .into_iter()
-            .flat_map(|i| {
-                let result: Vec<usize> = (2_usize..i)
-                    .into_par_iter()
-                    .map(|j| {
-                        let combos = enumerate_combos((0..i).collect(), j);
-                        combos.len()
-                    })
-                    .collect();
-                result
-            })
-            .collect();
-
-        println!("Elapsed duration: {} ms", start.elapsed().as_millis());
-        println!("Computed {} combos", combos.iter().sum::<usize>());
     }
 }

@@ -7,6 +7,11 @@ edition = "2021"
 name = "tictactoe"
 path = "src/tictactoe.rs"
 
+[[bin]]
+name = "kuhn"
+path = "src/kuhn.rs"
+
 [dependencies]
 hashbrown = { version = "0.14.5", features = ["rayon"] }
+ndarray = "0.16.0"
 rayon = "1.10.0"

@@ -12,20 +12,20 @@ pub enum Tile {
 
 impl Display for Tile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Tile::*;
-        write!(
-            f,
-            "{}",
-            match self {
-                Empty => " ",
-                X => "X",
-                O => "O",
-            }
-        )
+        write!(f, "{}", self.to_string())
     }
 }
 
 impl Tile {
+    pub fn to_string(&self) -> String {
+        use Tile::*;
+        match self {
+            Empty => " ".to_string(),
+            X => "X".to_string(),
+            O => "O".to_string(),
+        }
+    }
+
     pub fn hash(&self) -> u32 {
         use Tile::*;
         match self {
@@ -53,18 +53,46 @@ pub struct Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Tile::*;
         write!(
             f,
             "-------\n|{}|{}|{}|\n-------\n|{}|{}|{}|\n-------\n|{}|{}|{}|\n-------",
-            self.tiles[0],
-            self.tiles[1],
-            self.tiles[2],
-            self.tiles[3],
-            self.tiles[4],
-            self.tiles[5],
-            self.tiles[6],
-            self.tiles[7],
-            self.tiles[8]
+            match self.tiles[0] {
+                Empty => "0".to_string(),
+                _ => self.tiles[0].to_string(),
+            },
+            match self.tiles[1] {
+                Empty => "1".to_string(),
+                _ => self.tiles[1].to_string(),
+            },
+            match self.tiles[2] {
+                Empty => "2".to_string(),
+                _ => self.tiles[2].to_string(),
+            },
+            match self.tiles[3] {
+                Empty => "3".to_string(),
+                _ => self.tiles[3].to_string(),
+            },
+            match self.tiles[4] {
+                Empty => "4".to_string(),
+                _ => self.tiles[4].to_string(),
+            },
+            match self.tiles[5] {
+                Empty => "5".to_string(),
+                _ => self.tiles[5].to_string(),
+            },
+            match self.tiles[6] {
+                Empty => "6".to_string(),
+                _ => self.tiles[6].to_string(),
+            },
+            match self.tiles[7] {
+                Empty => "7".to_string(),
+                _ => self.tiles[7].to_string(),
+            },
+            match self.tiles[8] {
+                Empty => "8".to_string(),
+                _ => self.tiles[8].to_string(),
+            },
         )
     }
 }
@@ -217,48 +245,32 @@ impl Board {
             return Empty;
         }
 
-        match self.get_tiles(vec![0, 1, 2])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-        match self.get_tiles(vec![3, 4, 5])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-        match self.get_tiles(vec![6, 7, 8])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-        match self.get_tiles(vec![0, 3, 6])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-        match self.get_tiles(vec![1, 4, 7])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-        match self.get_tiles(vec![2, 5, 8])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-        match self.get_tiles(vec![0, 4, 8])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-        match self.get_tiles(vec![2, 4, 6])[..] {
-            [X, X, X] => return X,
-            [O, O, O] => return O,
-            _ => (),
-        }
-
-        Empty
+        [
+            [0, 1, 2],
+            [3, 4, 5],
+            [6, 7, 8],
+            [0, 3, 6],
+            [1, 4, 7],
+            [2, 5, 8],
+            [0, 4, 8],
+            [2, 4, 6],
+        ]
+        .map(|x| {
+            match [
+                self.tiles[x[0]].clone(),
+                self.tiles[x[1]].clone(),
+                self.tiles[x[2]].clone(),
+            ] {
+                [X, X, X] => X,
+                [O, O, O] => O,
+                _ => Empty,
+            }
+        })
+        .into_iter()
+        .fold(Empty, |value, x| match x {
+            Empty => value,
+            _ => x,
+        })
     }
 }
 
