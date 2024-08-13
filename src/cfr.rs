@@ -15,17 +15,17 @@ pub trait Node: Debug + Sync + Send + Display {
 
 #[derive(Debug)]
 pub struct ActionNode {
-    name: String,
-    state_probabilities: Array<f64, Ix1>, // Indexed by state
-    total_probabilities: Array<f64, Ix1>, // Indexed by infoset
-    evs: Array<f64, Ix1>,                 // Indexed by state
-    infosets: Vec<Vec<usize>>,            // Indexed by infoset, member(state)
-    strategy: Array<f64, Ix2>,            // Indexed by action, infoset
-    avg_strategy: Array<f64, Ix2>,        // Indexed by action, infoset
-    regrets: Array<f64, Ix2>,             // Indexed by action, infoset
-    children: Vec<Box<dyn Node>>,
-    sign: i8,        // 1 for positive payout, -1 for negative payout
-    iter_count: u64, // CFR iteration count
+    pub name: String,
+    pub state_probabilities: Array<f64, Ix1>, // Indexed by state
+    pub total_probabilities: Array<f64, Ix1>, // Indexed by infoset
+    pub evs: Array<f64, Ix1>,                 // Indexed by state
+    pub infosets: Vec<Vec<usize>>,            // Indexed by infoset, member(state)
+    pub strategy: Array<f64, Ix2>,            // Indexed by action, infoset
+    pub avg_strategy: Array<f64, Ix2>,        // Indexed by action, infoset
+    pub regrets: Array<f64, Ix2>,             // Indexed by action, infoset
+    pub children: Vec<Box<dyn Node>>,
+    pub sign: i8,        // 1 for positive payout, -1 for negative payout
+    pub iter_count: u64, // CFR iteration count
 }
 
 impl ActionNode {
@@ -104,6 +104,7 @@ impl ActionNode {
     }
 
     fn regret_match(&self) -> Array<f64, Ix2> {
+        const EPSILON: f64 = 1e-8;
         let mut result: Array<f64, Ix2> = Array::zeros((self.children.len(), self.infosets.len()));
         self.regrets
             .axis_iter(Axis(1))
@@ -125,9 +126,9 @@ impl ActionNode {
                             1. / self.children.len() as f64,
                         ));
                 } else {
-                    result
-                        .slice_mut(s![.., infoset_index])
-                        .assign(&(&nonzero_regrets / nonzero_regrets.sum()));
+                    result.slice_mut(s![.., infoset_index]).assign(
+                        &((&nonzero_regrets + EPSILON) / (&nonzero_regrets + EPSILON).sum()),
+                    );
                 }
             })
             .for_each(drop);
@@ -181,16 +182,19 @@ impl Node for ActionNode {
     }
 
     fn update_probabilities(&mut self) {
-        if self.total_probabilities == Array::zeros(self.total_probabilities.len()) {
-            self.total_probabilities = self.state_probabilities.clone()
+        if self.total_probabilities.sum() == 0. {
+            self.total_probabilities = self.infoset_probabilities(&self.state_probabilities);
         }
+
+        let expanded_strategy = self.expand_strategy();
 
         self.children
             .par_iter_mut()
             .enumerate()
             .map(|(action_index, child)| {
                 child.set_state_probabilities(
-                    self.state_probabilities.clone() * self.strategy.slice(s![action_index, ..]),
+                    self.state_probabilities.clone()
+                        * expanded_strategy.slice(s![action_index, ..]),
                 );
                 child.update_probabilities();
             })
@@ -235,6 +239,11 @@ impl Node for ActionNode {
 
         self.iter_count += 1;
         self.total_probabilities = &self.total_probabilities + infoset_probabilities;
+
+        self.children
+            .par_iter_mut()
+            .map(|x| x.update_strategy())
+            .for_each(drop);
     }
 }
 
@@ -250,9 +259,9 @@ impl Display for TerminalNode {
 
 #[derive(Debug)]
 pub struct TerminalNode {
-    name: String,
-    state_probabilities: Array<f64, Ix1>,
-    payouts: Array<f64, Ix1>,
+    pub name: String,
+    pub state_probabilities: Array<f64, Ix1>,
+    pub payouts: Array<f64, Ix1>,
 }
 
 impl Node for TerminalNode {
@@ -293,8 +302,8 @@ mod tests {
     fn test_expand_strategy() {
         let root = ActionNode {
             name: "root".to_string(),
-            state_probabilities: Array::from_elem(6, 1. / 3.),
-            total_probabilities: Array::zeros(6),
+            state_probabilities: Array::from_elem(6, 1. / 6.),
+            total_probabilities: Array::zeros(3),
             evs: Array::zeros(6),
             infosets: vec![vec![0, 1], vec![2, 3], vec![4, 5]],
             strategy: Array::from_elem((2, 3), 1. / 2.),
@@ -352,11 +361,12 @@ mod tests {
         };
         println!("{}", root);
 
-        for _ in 0..100 {
+        for _ in 0..1 {
             // Run one iteration of CFR
             root.update_probabilities();
             root.update_ev();
             root.update_strategy();
+            root.update_probabilities();
         }
 
         println!("{}", root);
