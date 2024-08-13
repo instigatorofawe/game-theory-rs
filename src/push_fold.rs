@@ -30,12 +30,10 @@ impl Display for Hand {
             } else {
                 write!(f, "{}{}s", RANK_TO_CHAR[r2], RANK_TO_CHAR[r1])
             }
+        } else if r1 > r2 {
+            write!(f, "{}{}o", RANK_TO_CHAR[r1], RANK_TO_CHAR[r2])
         } else {
-            if r1 > r2 {
-                write!(f, "{}{}o", RANK_TO_CHAR[r1], RANK_TO_CHAR[r2])
-            } else {
-                write!(f, "{}{}o", RANK_TO_CHAR[r2], RANK_TO_CHAR[r1])
-            }
+            write!(f, "{}{}o", RANK_TO_CHAR[r2], RANK_TO_CHAR[r1])
         }
     }
 }
@@ -46,17 +44,22 @@ impl Hand {
         let i = x / 13;
         let j = x % 13;
 
-        if i > j {
-            result.push(RANK_TO_CHAR[i]);
-            result.push(RANK_TO_CHAR[j]);
-            result.push('s');
-        } else if i < j {
-            result.push(RANK_TO_CHAR[j]);
-            result.push(RANK_TO_CHAR[i]);
-            result.push('o');
-        } else {
-            result.push(RANK_TO_CHAR[i]);
-            result.push(RANK_TO_CHAR[j]);
+        use std::cmp::Ordering::*;
+        match i.cmp(&j) {
+            Greater => {
+                result.push(RANK_TO_CHAR[i]);
+                result.push(RANK_TO_CHAR[j]);
+                result.push('s');
+            }
+            Less => {
+                result.push(RANK_TO_CHAR[j]);
+                result.push(RANK_TO_CHAR[i]);
+                result.push('o');
+            }
+            Equal => {
+                result.push(RANK_TO_CHAR[i]);
+                result.push(RANK_TO_CHAR[j]);
+            }
         }
 
         result
@@ -116,7 +119,6 @@ fn build_push_fold_tree(bbs: f64) -> Box<dyn Node> {
         .into_par_iter()
         .map(|i| {
             (i..169)
-                .into_iter()
                 .map(|j| {
                     exact_equity(
                         &HandRange::from_strings(vec![
@@ -162,9 +164,9 @@ fn build_push_fold_tree(bbs: f64) -> Box<dyn Node> {
         .map(|i| (0_usize..169).map(|j| j * 169 + i).collect::<Vec<usize>>())
         .collect();
 
-    let root = Box::new(ActionNode {
+    (Box::new(ActionNode {
         name: "root".to_string(),
-        state_probabilities: state_probabilities,
+        state_probabilities,
         total_probabilities: Array::zeros(169),
         evs: Array::zeros(169 * 169),
         infosets: infosets_p1,
@@ -206,13 +208,11 @@ fn build_push_fold_tree(bbs: f64) -> Box<dyn Node> {
                 payouts: Array::from_elem(169 * 169, -0.5),
             }),
         ],
-    });
-
-    root
+    })) as _
 }
 
 fn main() {
-    let hand_names: Vec<String> = (0..169).map(|i| Hand::index_to_str(i)).collect();
+    let hand_names: Vec<String> = (0..169).map(Hand::index_to_str).collect();
 
     println!("Building tree...");
     let mut root = build_push_fold_tree(20.);
@@ -225,7 +225,7 @@ fn main() {
 
     hand_names
         .iter()
-        .zip(root.avg_strategy().unwrap().slice(s![0, ..]).into_iter())
+        .zip(root.avg_strategy().unwrap().slice(s![0, ..]))
         .map(|(name, strategy)| {
             print!("{}: {},", name, strategy);
         })
@@ -238,8 +238,7 @@ fn main() {
             root.children().unwrap()[0]
                 .avg_strategy()
                 .unwrap()
-                .slice(s![0, ..])
-                .into_iter(),
+                .slice(s![0, ..]),
         )
         .map(|(name, strategy)| {
             print!("{}: {},", name, strategy);
