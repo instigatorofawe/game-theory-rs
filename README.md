@@ -4,10 +4,10 @@ An implementation of various solution concepts (minimax, Nash) for some toy game
 
 ## Games and solutions implemented
 - TicTacToe (tabular minimax, with rotation and reflection invariant hashing)
+- Kuhn Poker: CFR
 
 ## Planned
 - Simultaneous games: fictitious play, CFR
-- Kuhn Poker: CFR
 - No Limit Texas Hold'Em
     - Hand evaluator
     - Equity calculator

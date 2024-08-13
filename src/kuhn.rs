@@ -90,7 +90,7 @@ fn build_kuhn_tree() -> Box<dyn Node> {
 fn main() {
     let mut root = build_kuhn_tree();
 
-    for _ in 0..1000 {
+    for _ in 0..10000 {
         // Run one iteration of CFR
         root.update_probabilities();
         root.update_ev();
