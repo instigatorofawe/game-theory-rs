@@ -12,12 +12,12 @@ pub enum Tile {
 
 impl Display for Tile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.string())
     }
 }
 
 impl Tile {
-    pub fn to_string(&self) -> String {
+    pub fn string(&self) -> String {
         use Tile::*;
         match self {
             Empty => " ".to_string(),
@@ -59,39 +59,39 @@ impl Display for Board {
             "-------\n|{}|{}|{}|\n-------\n|{}|{}|{}|\n-------\n|{}|{}|{}|\n-------",
             match self.tiles[0] {
                 Empty => "0".to_string(),
-                _ => self.tiles[0].to_string(),
+                _ => self.tiles[0].string(),
             },
             match self.tiles[1] {
                 Empty => "1".to_string(),
-                _ => self.tiles[1].to_string(),
+                _ => self.tiles[1].string(),
             },
             match self.tiles[2] {
                 Empty => "2".to_string(),
-                _ => self.tiles[2].to_string(),
+                _ => self.tiles[2].string(),
             },
             match self.tiles[3] {
                 Empty => "3".to_string(),
-                _ => self.tiles[3].to_string(),
+                _ => self.tiles[3].string(),
             },
             match self.tiles[4] {
                 Empty => "4".to_string(),
-                _ => self.tiles[4].to_string(),
+                _ => self.tiles[4].string(),
             },
             match self.tiles[5] {
                 Empty => "5".to_string(),
-                _ => self.tiles[5].to_string(),
+                _ => self.tiles[5].string(),
             },
             match self.tiles[6] {
                 Empty => "6".to_string(),
-                _ => self.tiles[6].to_string(),
+                _ => self.tiles[6].string(),
             },
             match self.tiles[7] {
                 Empty => "7".to_string(),
-                _ => self.tiles[7].to_string(),
+                _ => self.tiles[7].string(),
             },
             match self.tiles[8] {
                 Empty => "8".to_string(),
-                _ => self.tiles[8].to_string(),
+                _ => self.tiles[8].string(),
             },
         )
     }
