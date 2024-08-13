@@ -10,8 +10,21 @@ use rust_poker::constants::RANK_TO_CHAR;
 use rust_poker::equity_calculator::*;
 use rust_poker::hand_range::*;
 
+use clap::*;
 use ndarray::*;
 use rayon::prelude::*;
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(default_value = "10.0", help = "Stack size")]
+    stack_size: f64,
+
+    #[arg(default_value = "0.125", short, long, help = "Ante")]
+    ante: f64,
+
+    #[arg(default_value = "0.5", short, long, help = "Small blind")]
+    sb: f64,
+}
 
 struct Hand(usize, usize);
 
@@ -104,7 +117,7 @@ impl Default for MatchupTable {
     }
 }
 
-fn build_push_fold_tree(bbs: f64) -> Box<dyn Node> {
+fn build_push_fold_tree(stack_size: f64, ante: f64, sb: f64) -> Box<dyn Node> {
     let mut matchup_table = MatchupTable::default();
     enumerate_combos((0..52).collect::<Vec<usize>>(), 4)
         .into_iter()
@@ -191,31 +204,32 @@ fn build_push_fold_tree(bbs: f64) -> Box<dyn Node> {
                     Box::new(TerminalNode {
                         name: "bc".to_string(),
                         state_probabilities: Array::zeros(169 * 169),
-                        payouts: Array::from_elem(169 * 169, bbs)
+                        payouts: Array::from_elem(169 * 169, stack_size + ante)
                             * 2.
                             * (equities_square.flatten() - 0.5),
                     }),
                     Box::new(TerminalNode {
                         name: "bf".to_string(),
                         state_probabilities: Array::zeros(169 * 169),
-                        payouts: Array::from_elem(169 * 169, 1.),
+                        payouts: Array::from_elem(169 * 169, 1. + ante),
                     }),
                 ],
             }),
             Box::new(TerminalNode {
                 name: "f".to_string(),
                 state_probabilities: Array::zeros(169 * 169),
-                payouts: Array::from_elem(169 * 169, -0.5),
+                payouts: Array::from_elem(169 * 169, -sb - ante),
             }),
         ],
     })) as _
 }
 
 fn main() {
+    let args = Args::parse();
     let hand_names: Vec<String> = (0..169).map(Hand::index_to_str).collect();
 
     println!("Building tree...");
-    let mut root = build_push_fold_tree(20.);
+    let mut root = build_push_fold_tree(args.stack_size, args.ante, args.sb);
 
     for _ in 0..10000 {
         root.update_probabilities();
