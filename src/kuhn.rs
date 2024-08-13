@@ -97,8 +97,26 @@ fn main() {
         root.update_strategy();
     }
 
-    println!("{}", root);
-}
+    let root_strategy = root.avg_strategy().unwrap();
+    println!("K / Q / J");
+    println!("Root");
+    println!("Bet: {}", root_strategy.slice(s![0, ..]));
+    println!("Check: {}", root_strategy.slice(s![1, ..]));
 
-#[cfg(test)]
-mod tests {}
+    let b_strategy = root.children().unwrap()[0].avg_strategy().unwrap();
+    println!("b");
+    println!("Call: {}", b_strategy.slice(s![0, ..]));
+    println!("Fold: {}", b_strategy.slice(s![1, ..]));
+
+    let x_strategy = root.children().unwrap()[1].avg_strategy().unwrap();
+    println!("x");
+    println!("Bet: {}", x_strategy.slice(s![0, ..]));
+    println!("Check: {}", x_strategy.slice(s![1, ..]));
+
+    let x_b_strategy = root.children().unwrap()[1].children().unwrap()[0]
+        .avg_strategy()
+        .unwrap();
+    println!("x_b");
+    println!("Call: {}", x_b_strategy.slice(s![0, ..]));
+    println!("Fold: {}", x_b_strategy.slice(s![1, ..]));
+}
