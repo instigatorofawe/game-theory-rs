@@ -190,7 +190,7 @@ fn build_push_fold_tree(bbs: f64) -> Box<dyn Node> {
                         name: "bc".to_string(),
                         state_probabilities: Array::zeros(169 * 169),
                         payouts: Array::from_elem(169 * 169, 2. * bbs)
-                            * (0.5 - equities_square.flatten()),
+                            * (equities_square.flatten() - 0.5),
                     }),
                     Box::new(TerminalNode {
                         name: "bf".to_string(),
@@ -214,28 +214,48 @@ fn main() {
     let hand_names: Vec<String> = (0..169).map(|i| Hand::index_to_str(i)).collect();
 
     println!("Building tree...");
-    let mut root = build_push_fold_tree(10.);
+    let mut root = build_push_fold_tree(5.);
 
     for i in 0..1000 {
-        // println!("Iteration {}", i);
-        // Run one iteration of CFR
         root.update_probabilities();
         root.update_ev();
         root.update_strategy();
     }
 
     hand_names
-        .into_iter()
+        .iter()
         .zip(root.avg_strategy().unwrap().slice(s![0, ..]).into_iter())
         .map(|(name, strategy)| {
-            println!("{}: {}", name, strategy);
+            print!("{}: {},", name, strategy);
         })
         .for_each(drop);
+    println!();
+
+    hand_names
+        .iter()
+        .zip(
+            root.children().unwrap()[0]
+                .avg_strategy()
+                .unwrap()
+                .slice(s![0, ..])
+                .into_iter(),
+        )
+        .map(|(name, strategy)| {
+            print!("{}: {},", name, strategy);
+        })
+        .for_each(drop);
+    println!();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_flatten() {
+        let a = array![[0, 1, 2], [3, 4, 5]];
+        println!("{}", a.flatten());
+    }
 
     #[test]
     fn test_index() {
