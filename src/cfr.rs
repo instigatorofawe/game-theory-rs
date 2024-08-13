@@ -2,7 +2,7 @@ use ndarray::*;
 use rayon::prelude::*;
 use std::fmt::{Debug, Display};
 
-trait Node: Debug + Sync + Send + Display {
+pub trait Node: Debug + Sync + Send + Display {
     fn name(&self) -> String;
     fn state_probabilities(&self) -> Array<f64, Ix1>;
     fn payouts(&self) -> Array<f64, Ix1>;
@@ -14,7 +14,7 @@ trait Node: Debug + Sync + Send + Display {
 }
 
 #[derive(Debug)]
-struct ActionNode {
+pub struct ActionNode {
     name: String,
     state_probabilities: Array<f64, Ix1>, // Indexed by state
     total_probabilities: Array<f64, Ix1>, // Indexed by infoset
@@ -38,7 +38,7 @@ impl ActionNode {
             .enumerate()
             .map(|(infoset_index, infoset_contents)| {
                 infoset_contents
-                    .into_iter()
+                    .iter()
                     .map(|state_index| {
                         result
                             .slice_mut(s![.., *state_index])
@@ -54,7 +54,7 @@ impl ActionNode {
         let result: Array<f64, Ix1> = self
             .infosets
             .iter()
-            .map(|x| x.into_iter().map(|i| state_probabilities[*i]).sum())
+            .map(|x| x.iter().map(|i| state_probabilities[*i]).sum())
             .collect();
         result
     }
@@ -68,7 +68,7 @@ impl ActionNode {
             .infosets
             .iter()
             .map(|x| {
-                x.into_iter()
+                x.iter()
                     .map(|state_index| evs[*state_index] * state_probabilities[*state_index])
                     .sum()
             })
@@ -104,7 +104,34 @@ impl ActionNode {
     }
 
     fn regret_match(&self) -> Array<f64, Ix2> {
-        todo!()
+        let mut result: Array<f64, Ix2> = Array::zeros((self.children.len(), self.infosets.len()));
+        self.regrets
+            .axis_iter(Axis(1))
+            .enumerate()
+            .map(|(infoset_index, x)| {
+                let nonzero_regrets: Array<f64, Ix1> = x
+                    .iter()
+                    .map(|y| match *y < 0. {
+                        true => 0.,
+                        _ => *y,
+                    })
+                    .collect();
+
+                if nonzero_regrets.sum() == 0. {
+                    result
+                        .slice_mut(s![.., infoset_index])
+                        .assign(&Array::from_elem(
+                            nonzero_regrets.len(),
+                            1. / self.children.len() as f64,
+                        ));
+                } else {
+                    result
+                        .slice_mut(s![.., infoset_index])
+                        .assign(&(&nonzero_regrets / nonzero_regrets.sum()));
+                }
+            })
+            .for_each(drop);
+        result
     }
 }
 
@@ -201,6 +228,7 @@ impl Node for ActionNode {
             / (self.iter_count as f64 + 1.);
 
         self.strategy = self.regret_match();
+
         self.avg_strategy = (&self.avg_strategy * &self.total_probabilities
             + &self.strategy * &infoset_probabilities)
             / (&self.total_probabilities + &infoset_probabilities);
@@ -221,7 +249,7 @@ impl Display for TerminalNode {
 }
 
 #[derive(Debug)]
-struct TerminalNode {
+pub struct TerminalNode {
     name: String,
     state_probabilities: Array<f64, Ix1>,
     payouts: Array<f64, Ix1>,
@@ -299,19 +327,24 @@ mod tests {
             total_probabilities: Array::zeros(3),
             evs: Array::zeros(3),
             infosets: vec![vec![0], vec![1], vec![2]],
-            strategy: Array::from_elem((2, 3), 1. / 2.),
-            avg_strategy: Array::from_elem((2, 3), 1. / 2.),
-            regrets: Array::from_elem((2, 3), 0.),
+            strategy: Array::from_elem((3, 3), 1. / 3.),
+            avg_strategy: Array::from_elem((3, 3), 1. / 3.),
+            regrets: Array::from_elem((3, 3), 0.),
             children: vec![
                 Box::new(TerminalNode {
                     name: "a".to_string(),
                     state_probabilities: Array::from_elem(3, 0.),
-                    payouts: array![3., 2., 1.],
+                    payouts: array![3., 2., 3.],
                 }),
                 Box::new(TerminalNode {
                     name: "b".to_string(),
                     state_probabilities: Array::from_elem(3, 0.),
-                    payouts: array![1., 2., 3.],
+                    payouts: array![1., 2.5, 2.],
+                }),
+                Box::new(TerminalNode {
+                    name: "c".to_string(),
+                    state_probabilities: Array::from_elem(3, 0.),
+                    payouts: array![4., 2., 2.],
                 }),
             ],
             sign: 1,
@@ -319,10 +352,12 @@ mod tests {
         };
         println!("{}", root);
 
-        // Run one iteration of CFR
-        root.update_probabilities();
-        root.update_ev();
-        root.update_strategy();
+        for _ in 0..100 {
+            // Run one iteration of CFR
+            root.update_probabilities();
+            root.update_ev();
+            root.update_strategy();
+        }
 
         println!("{}", root);
 
