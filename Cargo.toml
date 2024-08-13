@@ -11,7 +11,13 @@ path = "src/tictactoe.rs"
 name = "kuhn"
 path = "src/kuhn.rs"
 
+[[bin]]
+name = "push-fold"
+path = "src/push_fold.rs"
+
 [dependencies]
 hashbrown = { version = "0.14.5", features = ["rayon"] }
 ndarray = "0.16.0"
+num_cpus = "1.16.0"
 rayon = "1.10.0"
+rust_poker = "0.1.14"
