@@ -189,7 +189,8 @@ fn build_push_fold_tree(bbs: f64) -> Box<dyn Node> {
                     Box::new(TerminalNode {
                         name: "bc".to_string(),
                         state_probabilities: Array::zeros(169 * 169),
-                        payouts: Array::from_elem(169 * 169, 2. * bbs)
+                        payouts: Array::from_elem(169 * 169, bbs)
+                            * 2.
                             * (equities_square.flatten() - 0.5),
                     }),
                     Box::new(TerminalNode {
@@ -214,9 +215,9 @@ fn main() {
     let hand_names: Vec<String> = (0..169).map(|i| Hand::index_to_str(i)).collect();
 
     println!("Building tree...");
-    let mut root = build_push_fold_tree(5.);
+    let mut root = build_push_fold_tree(20.);
 
-    for i in 0..1000 {
+    for _ in 0..10000 {
         root.update_probabilities();
         root.update_ev();
         root.update_strategy();
