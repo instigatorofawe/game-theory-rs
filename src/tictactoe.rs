@@ -1,5 +1,7 @@
 use hashbrown::HashMap;
+use rayon::prelude::*;
 use std::fmt::Display;
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tile {
@@ -273,13 +275,13 @@ impl Board {
 }
 
 pub struct SolutionTable {
-    value_table: HashMap<u32, i8>,
+    value_table: Mutex<HashMap<u32, i8>>,
 }
 
 impl Default for SolutionTable {
     fn default() -> Self {
         Self {
-            value_table: HashMap::new(),
+            value_table: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -287,72 +289,84 @@ impl Default for SolutionTable {
 impl SolutionTable {
     /// Builds full solution table
     pub fn build() -> Self {
-        let mut result = SolutionTable {
-            value_table: HashMap::new(),
+        let result = SolutionTable {
+            value_table: Mutex::new(HashMap::new()),
         };
         let root = Board::default();
         result.evaluate_recursive(root);
 
         #[cfg(test)]
-        println!("{}", result.value_table.len());
+        println!("{}", result.value_table.lock().unwrap().len());
 
         result
     }
 
-    fn evaluate_recursive(&mut self, board: Board) -> i8 {
+    fn evaluate_recursive(&self, board: Board) -> i8 {
         use Tile::*;
         let hash = board.invariant_hash();
-        if self.value_table.contains_key(&hash) {
-            *self.value_table.get(&hash).unwrap()
-        } else {
-            // Check if leaf node
-            match board.winner() {
-                X => {
-                    let value = 1;
-                    self.value_table.insert(hash, value);
-                    return value;
-                }
-                O => {
-                    let value = -1;
-                    self.value_table.insert(hash, value);
-                    return value;
-                }
-                _ => {
-                    if board.empty().is_empty() {
-                        let value = 0;
-                        self.value_table.insert(hash, value);
+        let value: Option<i8>;
+        {
+            let lock = self.value_table.lock().unwrap();
+            value = lock.get(&hash).copied();
+        }
+
+        match value {
+            Some(x) => x,
+            None => {
+                // Check if leaf node
+                match board.winner() {
+                    X => {
+                        let value = 1;
+                        self.value_table.lock().unwrap().insert(hash, value);
                         return value;
                     }
+                    O => {
+                        let value = -1;
+                        self.value_table.lock().unwrap().insert(hash, value);
+                        return value;
+                    }
+                    _ => {
+                        if board.empty().is_empty() {
+                            let value = 0;
+                            self.value_table.lock().unwrap().insert(hash, value);
+                            return value;
+                        }
+                    }
                 }
+
+                // Otherwise evaluate children recursively
+                let children: Vec<Board> =
+                    board.empty().into_iter().map(|i| board.act(i)).collect();
+                let child_values: Vec<i8> = children
+                    .into_par_iter()
+                    .map(|x| self.evaluate_recursive(x))
+                    .collect();
+
+                let value = match board.turn() {
+                    X => child_values.into_iter().max().unwrap(),
+                    O => child_values.into_iter().min().unwrap(),
+                    _ => panic!("Impossible branch, invalid turn"),
+                };
+
+                self.value_table.lock().unwrap().insert(hash, value);
+                value
             }
-
-            // Otherwise evaluate children recursively
-            let children: Vec<Board> = board.empty().into_iter().map(|i| board.act(i)).collect();
-            let child_values: Vec<i8> = children
-                .into_iter()
-                .map(|x| self.evaluate_recursive(x))
-                .collect();
-
-            let value = match board.turn() {
-                X => child_values.into_iter().max().unwrap(),
-                O => child_values.into_iter().min().unwrap(),
-                _ => panic!("Impossible branch, invalid turn"),
-            };
-
-            self.value_table.insert(hash, value);
-            value
         }
     }
 
     pub fn get(&self, invariant_hash: &u32) -> Option<i8> {
-        self.value_table.get(invariant_hash).copied()
+        self.value_table
+            .lock()
+            .unwrap()
+            .get(invariant_hash)
+            .copied()
     }
 
     pub fn solve(&mut self, board: &Board) -> usize {
         use Tile::*;
         let candidates = board.empty();
         let candidate_values: Vec<i8> = candidates
-            .iter()
+            .par_iter()
             .map(|i| self.evaluate_recursive(board.act(*i)))
             .collect();
 
@@ -463,10 +477,12 @@ mod tests {
     fn test_build_tree() {
         use Tile::*;
         let tree = SolutionTable::build();
-        assert_eq!(*tree.value_table.get(&0).unwrap(), 0);
+        assert_eq!(*tree.value_table.lock().unwrap().get(&0).unwrap(), 0);
         assert_eq!(
             *tree
                 .value_table
+                .lock()
+                .unwrap()
                 .get(
                     &Board {
                         tiles: [X, X, X, O, O, Empty, Empty, Empty, Empty]
@@ -480,6 +496,8 @@ mod tests {
         assert_eq!(
             *tree
                 .value_table
+                .lock()
+                .unwrap()
                 .get(
                     &Board {
                         tiles: [X, Empty, X, O, O, Empty, Empty, Empty, Empty]
