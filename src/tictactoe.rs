@@ -295,8 +295,8 @@ impl SolutionTable {
         let root = Board::default();
         result.evaluate_recursive(root);
 
-        #[cfg(test)]
-        println!("{}", result.value_table.lock().unwrap().len());
+        // #[cfg(test)]
+        // println!("{} entries", result.value_table.lock().unwrap().len());
 
         result
     }
@@ -507,5 +507,13 @@ mod tests {
                 .unwrap(),
             1
         );
+    }
+
+    #[test]
+    fn benchmark_build() {
+        use std::time::Instant;
+        let start = Instant::now();
+        let tree = SolutionTable::build();
+        println!("{:?}", start.elapsed());
     }
 }
