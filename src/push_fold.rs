@@ -5,6 +5,9 @@ use cfr::*;
 use utils::enumerate_combos;
 
 use std::fmt::Display;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
 
 use rust_poker::constants::RANK_TO_CHAR;
 use rust_poker::equity_calculator::*;
@@ -128,38 +131,66 @@ fn build_push_fold_tree(stack_size: f64, ante: f64, sb: f64) -> Box<dyn Node> {
         })
         .for_each(drop);
 
-    let equities: Vec<Vec<f64>> = (0_usize..169)
-        .into_par_iter()
-        .map(|i| {
-            (i..169)
-                .map(|j| {
-                    exact_equity(
-                        &HandRange::from_strings(vec![
-                            Hand::index_to_str(i),
-                            Hand::index_to_str(j),
-                        ]),
-                        get_card_mask(""),
-                        1,
-                    )
-                    .unwrap()[0]
-                })
-                .collect::<Vec<f64>>()
-        })
-        .collect();
+    let mut equities_square: Array<f64, Ix2>;
 
-    let mut equities_square: Array<f64, Ix2> = Array::zeros((169, 169));
-    equities
-        .into_iter()
-        .enumerate()
-        .map(|(i, x)| {
-            equities_square
-                .slice_mut(s![i, i..])
-                .assign(&Array::from(x.clone()));
-            equities_square
-                .slice_mut(s![i.., i])
-                .assign(&(1. - Array::from(x)));
-        })
-        .for_each(drop);
+    if Path::new("data/preflop_equities.bin").is_file() {
+        let bytes = std::fs::read("data/preflop_equities.bin")
+            .unwrap_or_else(|_| panic!("Preflop equity file could not be read!"));
+        let float_buffer: Vec<f64> = bytes
+            .chunks_exact(8)
+            .map(|x| f64::from_le_bytes(x.try_into().unwrap()))
+            .collect();
+        equities_square = Array::from(float_buffer)
+            .to_shape((169, 169))
+            .unwrap()
+            .into_owned();
+    } else {
+        let equities: Vec<Vec<f64>> = (0_usize..169)
+            .into_par_iter()
+            .map(|i| {
+                (i..169)
+                    .map(|j| {
+                        exact_equity(
+                            &HandRange::from_strings(vec![
+                                Hand::index_to_str(i),
+                                Hand::index_to_str(j),
+                            ]),
+                            get_card_mask(""),
+                            1,
+                        )
+                        .unwrap()[0]
+                    })
+                    .collect::<Vec<f64>>()
+            })
+            .collect();
+
+        equities_square = Array::zeros((169, 169));
+        equities
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| {
+                equities_square
+                    .slice_mut(s![i, i..])
+                    .assign(&Array::from(x.clone()));
+                equities_square
+                    .slice_mut(s![i.., i])
+                    .assign(&(1. - Array::from(x)));
+            })
+            .for_each(drop);
+
+        let mut o = File::create("data/preflop_equities.bin")
+            .unwrap_or_else(|_| panic!("Preflop equity file could not be written to!"));
+        let mut output_buffer = Vec::<u8>::with_capacity(169 * 169 * 8);
+        equities_square
+            .flatten()
+            .into_iter()
+            .map(|x| {
+                output_buffer.append(&mut Vec::from(x.to_le_bytes()));
+            })
+            .for_each(drop);
+        o.write_all(&output_buffer)
+            .unwrap_or_else(|_| panic!("Unable to write preflop equity file"));
+    }
 
     let total_matchups = matchup_table.sum();
     let state_probabilities: Array<f64, Ix1> = matchup_table
@@ -228,10 +259,10 @@ fn main() {
     let args = Args::parse();
     let hand_names: Vec<String> = (0..169).map(Hand::index_to_str).collect();
 
-    println!("Building tree...");
+    // println!("Building tree...");
     let mut root = build_push_fold_tree(args.stack_size, args.ante, args.sb);
 
-    for _ in 0..10000 {
+    for _ in 0..5000 {
         root.update_probabilities();
         root.update_ev();
         root.update_strategy();
@@ -239,23 +270,46 @@ fn main() {
 
     hand_names
         .iter()
-        .zip(root.avg_strategy().unwrap().slice(s![0, ..]))
-        .map(|(name, strategy)| {
-            print!("{}: {},", name, strategy);
+        .zip(root.strategy().unwrap().slice(s![0, ..]))
+        .enumerate()
+        .map(|(index, (name, strategy))| {
+            if *strategy > 0.999 {
+                print!("{}", name);
+                if index < 168 {
+                    print!(",");
+                }
+            } else if *strategy > 0.001 {
+                print!("{}:{}", name, (strategy * 100.).ceil() / 100.);
+                if index < 168 {
+                    print!(",");
+                }
+            }
         })
         .for_each(drop);
+    println!();
     println!();
 
     hand_names
         .iter()
         .zip(
             root.children().unwrap()[0]
-                .avg_strategy()
+                .strategy()
                 .unwrap()
                 .slice(s![0, ..]),
         )
-        .map(|(name, strategy)| {
-            print!("{}: {},", name, strategy);
+        .enumerate()
+        .map(|(index, (name, strategy))| {
+            if *strategy > 0.999 {
+                print!("{}", name);
+                if index < 168 {
+                    print!(",");
+                }
+            } else if *strategy > 0.001 {
+                print!("{}:{}", name, (strategy * 100.).ceil() / 100.);
+                if index < 168 {
+                    print!(",");
+                }
+            }
         })
         .for_each(drop);
     println!();
