@@ -306,8 +306,7 @@ impl SolutionTable {
         let hash = board.invariant_hash();
         let value: Option<i8>;
         {
-            let lock = self.value_table.lock().unwrap();
-            value = lock.get(&hash).copied();
+            value = self.value_table.lock().unwrap().get(&hash).copied();
         }
 
         match value {

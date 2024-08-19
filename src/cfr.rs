@@ -6,6 +6,7 @@ pub trait Node: Debug + Sync + Send + Display {
     fn name(&self) -> String;
     fn state_probabilities(&self) -> Array<f64, Ix1>;
     fn payouts(&self) -> Array<f64, Ix1>;
+    fn strategy(&self) -> Option<Array<f64, Ix2>>;
     fn avg_strategy(&self) -> Option<Array<f64, Ix2>>;
     fn children(&self) -> Option<&Vec<Box<dyn Node>>>;
 
@@ -248,6 +249,10 @@ impl Node for ActionNode {
             .for_each(drop);
     }
 
+    fn strategy(&self) -> Option<Array<f64, Ix2>> {
+        Some(self.strategy.clone())
+    }
+
     fn avg_strategy(&self) -> Option<Array<f64, Ix2>> {
         Some(self.avg_strategy.clone())
     }
@@ -301,6 +306,11 @@ impl Node for TerminalNode {
 
     fn update_strategy(&mut self) {
         // Nothing to do for terminal nodes
+    }
+
+    fn strategy(&self) -> Option<Array<f64, Ix2>> {
+        // Terminal nodes have no strategy
+        None
     }
 
     fn avg_strategy(&self) -> Option<Array<f64, Ix2>> {

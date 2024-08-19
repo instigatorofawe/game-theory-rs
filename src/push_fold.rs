@@ -122,9 +122,9 @@ fn build_push_fold_tree(stack_size: f64, ante: f64, sb: f64) -> Box<dyn Node> {
     enumerate_combos((0..52).collect::<Vec<usize>>(), 4)
         .into_iter()
         .map(|x| {
-            matchup_table.count_matchup(Hand::get_index(x[0], x[1]), Hand::get_index(x[2], x[3]));
-            matchup_table.count_matchup(Hand::get_index(x[0], x[2]), Hand::get_index(x[1], x[3]));
-            matchup_table.count_matchup(Hand::get_index(x[0], x[3]), Hand::get_index(x[1], x[2]));
+            matchup_table.count_matchup(Hand::get_index(x[1], x[0]), Hand::get_index(x[3], x[2]));
+            matchup_table.count_matchup(Hand::get_index(x[2], x[0]), Hand::get_index(x[3], x[1]));
+            matchup_table.count_matchup(Hand::get_index(x[3], x[0]), Hand::get_index(x[2], x[1]));
         })
         .for_each(drop);
 
@@ -177,7 +177,7 @@ fn build_push_fold_tree(stack_size: f64, ante: f64, sb: f64) -> Box<dyn Node> {
         .map(|i| (0_usize..169).map(|j| j * 169 + i).collect::<Vec<usize>>())
         .collect();
 
-    (Box::new(ActionNode {
+    Box::new(ActionNode {
         name: "root".to_string(),
         state_probabilities,
         total_probabilities: Array::zeros(169),
@@ -221,7 +221,7 @@ fn build_push_fold_tree(stack_size: f64, ante: f64, sb: f64) -> Box<dyn Node> {
                 payouts: Array::from_elem(169 * 169, -sb - ante),
             }),
         ],
-    })) as _
+    })
 }
 
 fn main() {
@@ -273,14 +273,18 @@ mod tests {
 
     #[test]
     fn test_index() {
-        assert_eq!(Hand::get_index(1, 0), 0);
+        assert_eq!(Hand::get_index(1, 0), 0); // 22
+        assert_eq!(Hand::get_index(0, 1), 0);
+        assert_eq!(Hand::get_index(0, 2), 0);
         assert_eq!(Hand::get_index(51, 50), 168);
+        assert_eq!(Hand::get_index(50, 51), 168);
     }
 
     #[test]
     fn test_display() {
         assert_eq!(Hand(1, 0).to_string(), "22");
         assert_eq!(Hand(48, 0).to_string(), "A2s");
+        assert_eq!(Hand(48, 1).to_string(), "A2o");
     }
 
     #[test]
@@ -291,7 +295,20 @@ mod tests {
                     Hand(i, j).to_string(),
                     Hand::index_to_str(Hand::get_index(j, i))
                 );
+                assert_eq!(Hand(j, i).to_string(), Hand(i, j).to_string());
             }
         }
+    }
+
+    #[test]
+    fn test_equity() {
+        let x = exact_equity(
+            &HandRange::from_strings(vec!["5h4h".to_string(), "9d9s".to_string()]),
+            get_card_mask(""),
+            1,
+        )
+        .unwrap();
+
+        println!("{}", x[0]);
     }
 }
