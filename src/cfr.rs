@@ -240,8 +240,10 @@ impl Node for ActionNode {
             + &self.strategy * &infoset_probabilities)
             / (&self.total_probabilities + &infoset_probabilities);
 
+        self.total_probabilities = (&self.total_probabilities + infoset_probabilities)
+            * self.iter_count as f64
+            / (self.iter_count as f64 + 1.);
         self.iter_count += 1;
-        self.total_probabilities = &self.total_probabilities + infoset_probabilities;
 
         self.children
             .par_iter_mut()

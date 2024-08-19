@@ -6,7 +6,7 @@ use utils::enumerate_combos;
 
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 
 use rust_poker::constants::RANK_TO_CHAR;
@@ -262,7 +262,7 @@ fn main() {
     // println!("Building tree...");
     let mut root = build_push_fold_tree(args.stack_size, args.ante, args.sb);
 
-    for _ in 0..5000 {
+    for _ in 0..1000 {
         root.update_probabilities();
         root.update_ev();
         root.update_strategy();
@@ -270,7 +270,7 @@ fn main() {
 
     hand_names
         .iter()
-        .zip(root.strategy().unwrap().slice(s![0, ..]))
+        .zip(root.avg_strategy().unwrap().slice(s![0, ..]))
         .enumerate()
         .map(|(index, (name, strategy))| {
             if *strategy > 0.999 {
@@ -293,7 +293,7 @@ fn main() {
         .iter()
         .zip(
             root.children().unwrap()[0]
-                .strategy()
+                .avg_strategy()
                 .unwrap()
                 .slice(s![0, ..]),
         )
