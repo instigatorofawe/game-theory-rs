@@ -90,7 +90,7 @@ fn build_kuhn_tree() -> Box<dyn Node> {
 fn main() {
     let mut root = build_kuhn_tree();
 
-    for _ in 0..10000 {
+    for _ in 0..u64::pow(10, 6) {
         // Run one iteration of CFR
         root.update_probabilities();
         root.update_ev();
@@ -100,23 +100,23 @@ fn main() {
     let root_strategy = root.avg_strategy().unwrap();
     println!("K / Q / J");
     println!("Root");
-    println!("Bet: {}", root_strategy.slice(s![0, ..]));
-    println!("Check: {}", root_strategy.slice(s![1, ..]));
+    println!("Bet: {:.3}", root_strategy.slice(s![0, ..]));
+    println!("Check: {:.3}", root_strategy.slice(s![1, ..]));
 
     let b_strategy = root.children().unwrap()[0].avg_strategy().unwrap();
     println!("b");
-    println!("Call: {}", b_strategy.slice(s![0, ..]));
-    println!("Fold: {}", b_strategy.slice(s![1, ..]));
+    println!("Call: {:.3}", b_strategy.slice(s![0, ..]));
+    println!("Fold: {:.3}", b_strategy.slice(s![1, ..]));
 
     let x_strategy = root.children().unwrap()[1].avg_strategy().unwrap();
     println!("x");
-    println!("Bet: {}", x_strategy.slice(s![0, ..]));
-    println!("Check: {}", x_strategy.slice(s![1, ..]));
+    println!("Bet: {:.3}", x_strategy.slice(s![0, ..]));
+    println!("Check: {:.3}", x_strategy.slice(s![1, ..]));
 
     let x_b_strategy = root.children().unwrap()[1].children().unwrap()[0]
         .avg_strategy()
         .unwrap();
     println!("x_b");
-    println!("Call: {}", x_b_strategy.slice(s![0, ..]));
-    println!("Fold: {}", x_b_strategy.slice(s![1, ..]));
+    println!("Call: {:.3}", x_b_strategy.slice(s![0, ..]));
+    println!("Fold: {:.3}", x_b_strategy.slice(s![1, ..]));
 }

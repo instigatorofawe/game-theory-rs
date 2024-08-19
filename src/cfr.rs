@@ -234,6 +234,11 @@ impl Node for ActionNode {
             * self.iter_count as f64
             / (self.iter_count as f64 + 1.);
 
+        self.regrets.map_inplace(|x| match *x > 0. {
+            true => {}
+            false => *x = 0.,
+        });
+
         self.strategy = self.regret_match();
 
         self.avg_strategy = (&self.avg_strategy * &self.total_probabilities

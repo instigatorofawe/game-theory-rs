@@ -27,6 +27,9 @@ struct Args {
 
     #[arg(default_value = "0.5", short, long, help = "Small blind")]
     sb: f64,
+
+    #[arg(default_value = "100", short, long, help = "Number of CFR iterations")]
+    iter: u64,
 }
 
 struct Hand(usize, usize);
@@ -262,7 +265,7 @@ fn main() {
     // println!("Building tree...");
     let mut root = build_push_fold_tree(args.stack_size, args.ante, args.sb);
 
-    for _ in 0..1000 {
+    for _ in 0..args.iter {
         root.update_probabilities();
         root.update_ev();
         root.update_strategy();
@@ -279,7 +282,7 @@ fn main() {
                     print!(",");
                 }
             } else if *strategy > 0.001 {
-                print!("{}:{}", name, (strategy * 100.).ceil() / 100.);
+                print!("{}:{:.3}", name, strategy);
                 if index < 168 {
                     print!(",");
                 }
@@ -305,7 +308,7 @@ fn main() {
                     print!(",");
                 }
             } else if *strategy > 0.001 {
-                print!("{}:{}", name, (strategy * 100.).ceil() / 100.);
+                print!("{}:{:.3}", name, strategy);
                 if index < 168 {
                     print!(",");
                 }
