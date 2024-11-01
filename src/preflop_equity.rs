@@ -114,6 +114,42 @@ fn build_matchup_equities() {
 
 fn build_matchup_probabilities() {
     let mut matchups = [[0u64; 169]; 169];
+
+    let combos = enumerate_combos((0..52 as u8).collect(), 4);
+
+    combos.into_iter().for_each(|x| {
+        // (0, 1) and (2, 3)
+        let hand_1 = preflop_hand_from_cards(x[0], x[1]);
+        let hand_2 = preflop_hand_from_cards(x[2], x[3]);
+
+        matchups[hand_1 as usize][hand_2 as usize] += 1;
+        matchups[hand_2 as usize][hand_1 as usize] += 1;
+
+        // (0, 2) and (1, 3)
+        let hand_1 = preflop_hand_from_cards(x[0], x[2]);
+        let hand_2 = preflop_hand_from_cards(x[1], x[3]);
+
+        matchups[hand_1 as usize][hand_2 as usize] += 1;
+        matchups[hand_2 as usize][hand_1 as usize] += 1;
+
+        // (0, 3) and (1, 2)
+        let hand_1 = preflop_hand_from_cards(x[0], x[3]);
+        let hand_2 = preflop_hand_from_cards(x[1], x[2]);
+
+        matchups[hand_1 as usize][hand_2 as usize] += 1;
+        matchups[hand_2 as usize][hand_1 as usize] += 1;
+    });
+
+    let mut output_buffer: Vec<u8> = Vec::with_capacity(169 * 169 * 8);
+    matchups
+        .as_flattened()
+        .into_iter()
+        .for_each(|x| output_buffer.append(&mut Vec::from(x.to_le_bytes())));
+
+    let mut o = File::create("data/precomputed_matchups.bin")
+        .unwrap_or_else(|_| panic!("Could not create preflop equities"));
+    o.write_all(&output_buffer)
+        .unwrap_or_else(|_| panic!("Unable to write preflop equities"));
 }
 
 fn main() {
