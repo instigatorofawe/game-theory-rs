@@ -80,7 +80,7 @@ fn preflop_hand_from_str(hand: &str) -> Option<u8> {
 }
 
 fn build_matchup_equities() {
-    let mut equities = [[0.; 169]; 169];
+    let mut equities = [[0_f32; 169]; 169];
 
     for i in 0..169 as usize {
         equities[i][i] = 0.5;
@@ -91,29 +91,29 @@ fn build_matchup_equities() {
             let result = exact_equity(
                 &HandRange::from_strings(vec![String::from(HANDS[i]), String::from(HANDS[j])]),
                 get_card_mask(""),
-                1,
+                12,
             )
             .unwrap();
 
-            equities[i][j] = result[0];
-            equities[j][i] = result[1];
+            equities[i][j] = result[0] as f32;
+            equities[j][i] = result[1] as f32;
         }
     }
 
-    let mut output_buffer: Vec<u8> = Vec::with_capacity(169 * 169 * 8);
+    let mut output_buffer: Vec<u8> = Vec::with_capacity(169 * 169 * 4);
     equities
         .as_flattened()
         .into_iter()
         .for_each(|x| output_buffer.append(&mut Vec::from(x.to_le_bytes())));
 
-    let mut o = File::create("data/precomputed_equities.bin")
+    let mut o = File::create("data/equities.bin")
         .unwrap_or_else(|_| panic!("Could not create preflop equities"));
     o.write_all(&output_buffer)
         .unwrap_or_else(|_| panic!("Unable to write preflop equities"));
 }
 
 fn build_matchup_probabilities() {
-    let mut matchups = [[0u64; 169]; 169];
+    let mut matchups = [[0u8; 169]; 169];
 
     let combos = enumerate_combos((0..52 as u8).collect(), 4);
 
@@ -140,22 +140,94 @@ fn build_matchup_probabilities() {
         matchups[hand_2 as usize][hand_1 as usize] += 1;
     });
 
-    let mut output_buffer: Vec<u8> = Vec::with_capacity(169 * 169 * 8);
+    let mut output_buffer: Vec<u8> = Vec::with_capacity(169 * 169);
     matchups
         .as_flattened()
         .into_iter()
         .for_each(|x| output_buffer.append(&mut Vec::from(x.to_le_bytes())));
 
-    let mut o = File::create("data/precomputed_matchups.bin")
-        .unwrap_or_else(|_| panic!("Could not create preflop equities"));
+    let mut o = File::create("data/matchups.bin")
+        .unwrap_or_else(|_| panic!("Could not create preflop matchups"));
     o.write_all(&output_buffer)
-        .unwrap_or_else(|_| panic!("Unable to write preflop equities"));
+        .unwrap_or_else(|_| panic!("Unable to write preflop matchups"));
 }
 
 fn main() {
-    build_matchup_equities();
+    // build_matchup_equities();
     build_matchup_probabilities();
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matchup_equities() {
+        let bytes = include_bytes!("../data/equities.bin");
+        let equities: Vec<f32> = bytes
+            .chunks_exact(4)
+            .map(|x| f32::from_le_bytes(x.try_into().unwrap()))
+            .collect();
+
+        for i in 0..169 {
+            assert_eq!(equities[i * 169 + i], 0.5);
+        }
+
+        for i in 0..168 {
+            let result = exact_equity(
+                &HandRange::from_strings(vec![String::from(HANDS[i]), String::from(HANDS[i + 1])]),
+                get_card_mask(""),
+                12,
+            )
+            .unwrap();
+
+            assert_eq!(equities[i * 169 + i + 1], result[0] as f32);
+            assert_eq!(equities[(i + 1) * 169 + i], result[1] as f32);
+        }
+    }
+
+    #[test]
+    fn test_matchup_counts() {
+        let counts = include_bytes!("../data/matchups.bin");
+
+        let mut matchups = [[0u32; 169]; 169];
+
+        let combos = enumerate_combos((0..52 as u8).collect(), 4);
+
+        combos.into_iter().for_each(|x| {
+            // (0, 1) and (2, 3)
+            let hand_1 = preflop_hand_from_cards(x[0], x[1]);
+            let hand_2 = preflop_hand_from_cards(x[2], x[3]);
+
+            matchups[hand_1 as usize][hand_2 as usize] += 1;
+            matchups[hand_2 as usize][hand_1 as usize] += 1;
+
+            // (0, 2) and (1, 3)
+            let hand_1 = preflop_hand_from_cards(x[0], x[2]);
+            let hand_2 = preflop_hand_from_cards(x[1], x[3]);
+
+            matchups[hand_1 as usize][hand_2 as usize] += 1;
+            matchups[hand_2 as usize][hand_1 as usize] += 1;
+
+            // (0, 3) and (1, 2)
+            let hand_1 = preflop_hand_from_cards(x[0], x[3]);
+            let hand_2 = preflop_hand_from_cards(x[1], x[2]);
+
+            matchups[hand_1 as usize][hand_2 as usize] += 1;
+            matchups[hand_2 as usize][hand_1 as usize] += 1;
+        });
+
+        assert_eq!(
+            matchups.iter().map(|x| x.iter().sum::<u32>()).sum::<u32>(),
+            1624350
+        );
+
+        for i in 0..169 {
+            for j in 0..169 {
+                assert_eq!(matchups[i][j], counts[i * 169 + j] as u32);
+            }
+        }
+
+        assert_eq!(counts.iter().map(|x| *x as u32).sum::<u32>(), 1624350);
+    }
+}
