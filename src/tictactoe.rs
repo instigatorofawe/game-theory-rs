@@ -1,8 +1,9 @@
+use hashbrown::HashMap;
 use std::fmt::Display;
 
 /// Tile on a tic-tac-toe board
 #[derive(PartialEq, Clone, Debug)]
-enum Tile {
+pub enum Tile {
     Empty,
     X,
     O,
@@ -31,7 +32,7 @@ impl Display for Tile {
 }
 
 /// A tic-tac-toe board is simply 9 tiles
-struct Board {
+pub struct Board {
     tiles: [Tile; 9],
 }
 
@@ -43,7 +44,7 @@ impl Board {
 
     /// Computes the rotation and reflection invariant representation of the current board state
     pub fn invariant_hash(&self) -> u32 {
-        const CONFIGURATIONS: [[usize; 9]; 8] = [
+        const TRANSFORMATIONS: [[usize; 9]; 8] = [
             [0, 1, 2, 3, 4, 5, 6, 7, 8], // Rotations
             [2, 5, 8, 1, 4, 7, 0, 3, 6],
             [8, 7, 6, 5, 4, 3, 2, 1, 0],
@@ -54,7 +55,7 @@ impl Board {
             [0, 3, 6, 1, 4, 7, 2, 5, 8],
         ];
 
-        CONFIGURATIONS
+        TRANSFORMATIONS
             .iter()
             .map(|x| x.iter().fold(0, |i, x| i * 3 + self.tiles[*x].hash()))
             .min()
@@ -98,9 +99,27 @@ impl Board {
         return None;
     }
 
+    /// Return player whose turn it is
+    pub fn turn(&self) -> Tile {
+        let n_empty: u8 = self
+            .tiles
+            .iter()
+            .map(|x| match x {
+                Tile::Empty => 1,
+                _ => 0,
+            })
+            .sum();
+        match n_empty % 2 {
+            1 => Tile::X,
+            _ => Tile::O,
+        }
+    }
+
     /// The player whose turn it is makes their move. The board is modified in-place.
     pub fn act(&mut self, index: usize) {
-        todo!()
+        if self.tiles[index] == Tile::Empty {
+            self.tiles[index] = self.turn();
+        }
     }
 }
 
@@ -118,11 +137,59 @@ impl Default for Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}|{}|{}\n---------\n{}|{}|{}\n---------\n{}|{}|{}\n",
+            self.tiles[0],
+            self.tiles[1],
+            self.tiles[2],
+            self.tiles[3],
+            self.tiles[4],
+            self.tiles[5],
+            self.tiles[6],
+            self.tiles[7],
+            self.tiles[8]
+        )
+    }
+}
+
+/// Minimax solution table
+pub struct SolutionTable {}
+
+impl SolutionTable {
+    fn solve(&mut self, board: &Board) -> usize {
         todo!()
     }
 }
 
-fn main() {}
+impl Default for SolutionTable {
+    fn default() -> Self {
+        SolutionTable {}
+    }
+}
+
+fn main() {
+    use std::io::stdin;
+    let mut board = Board::default();
+    let mut solution = SolutionTable::default();
+
+    println!("{board}");
+
+    while board.winner() == Some(Tile::Empty) && !board.empty().is_empty() {
+        if board.turn() == Tile::X {
+            let mut input_buffer = String::new();
+            let _ = stdin().read_line(&mut input_buffer);
+            let i = input_buffer.trim().parse::<usize>().unwrap();
+            board.act(i);
+            // Read input
+        } else {
+            let argmin = solution.solve(&board);
+            board.act(argmin);
+        }
+
+        println!("{board}");
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -193,5 +260,31 @@ mod tests {
         };
 
         assert_eq!(board.winner(), Some(X));
+    }
+
+    #[test]
+    fn test_print() {
+        let x = format!("{}", Board::default());
+        assert_eq!(x, " | | \n---------\n | | \n---------\n | | \n");
+    }
+
+    #[test]
+    fn test_turn() {
+        use Tile::*;
+        let x = Board::default();
+        assert_eq!(x.turn(), X);
+    }
+
+    #[test]
+    fn test_empty() {
+        use Tile::*;
+
+        let x = Board::default();
+        assert_eq!(x.empty(), vec![0, 1, 2, 3, 4, 5, 6, 7, 8]);
+
+        let x = Board {
+            tiles: [X, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty],
+        };
+        assert_eq!(x.empty(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
     }
 }
