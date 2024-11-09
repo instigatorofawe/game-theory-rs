@@ -117,9 +117,12 @@ impl Board {
     }
 
     /// The player whose turn it is makes their move. The board is modified in-place.
-    pub fn act(&mut self, index: usize) {
-        if self.tiles[index] == Tile::Empty {
+    pub fn act(&mut self, index: usize) -> Result<(), String> {
+        if index < self.tiles.len() && self.tiles[index] == Tile::Empty {
             self.tiles[index] = self.turn();
+            Ok(())
+        } else {
+            Err(String::from("Invalid move"))
         }
     }
 }
@@ -137,6 +140,7 @@ impl Default for Board {
 }
 
 impl Display for Board {
+    /// Display board state
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -168,7 +172,7 @@ impl SolutionTable {
             .iter()
             .map(|i| {
                 let mut new_board = (*board).clone();
-                new_board.act(*i);
+                let _ = new_board.act(*i);
                 self.eval_recursive(&new_board)
             })
             .collect();
@@ -234,7 +238,7 @@ impl SolutionTable {
                                 .into_iter()
                                 .map(|i| {
                                     let mut new_board = (*board).clone();
-                                    new_board.act(i);
+                                    let _ = new_board.act(i);
                                     new_board
                                 })
                                 .collect();
@@ -276,7 +280,7 @@ fn main() {
             "O" => Tile::O,
             _ => Tile::X,
         },
-        None => Tile::O,
+        None => Tile::X,
     };
 
     let mut board = Board::default();
@@ -288,12 +292,19 @@ fn main() {
         if board.turn() == player_turn {
             let mut input_buffer = String::new();
             let _ = stdin().read_line(&mut input_buffer);
-            let i = input_buffer.trim().parse::<usize>().unwrap();
-            board.act(i);
+            let i = input_buffer.trim().parse::<usize>();
+            match i {
+                Ok(i) => {
+                    let _ = board.act(i);
+                }
+                _ => {
+                    println!("Invalid move!");
+                }
+            }
             // Read input
         } else {
             let argmin = solution.solve(&board);
-            board.act(argmin);
+            let _ = board.act(argmin);
         }
 
         println!("{board}");
@@ -341,6 +352,7 @@ mod tests {
         let board = Board {
             tiles: [Empty, Empty, X, Empty, Empty, Empty, Empty, Empty, Empty],
         };
+        assert_eq!(board.invariant_hash(), 1);
         let board = Board {
             tiles: [Empty, Empty, Empty, Empty, Empty, Empty, X, Empty, Empty],
         };
@@ -382,6 +394,27 @@ mod tests {
         use Tile::*;
         let x = Board::default();
         assert_eq!(x.turn(), X);
+    }
+
+    #[test]
+    fn test_state_transitions() {
+        use Tile::*;
+
+        let mut board = Board::default();
+        let _ = board.act(0);
+        assert_eq!(board.winner(), None);
+
+        let _ = board.act(3);
+        assert_eq!(board.winner(), None);
+
+        let _ = board.act(1);
+        assert_eq!(board.winner(), None);
+
+        let _ = board.act(4);
+        assert_eq!(board.winner(), None);
+
+        let _ = board.act(2);
+        assert_eq!(board.winner(), Some(X));
     }
 
     #[test]
