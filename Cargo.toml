@@ -7,6 +7,18 @@ edition = "2021"
 name = "tictactoe"
 path = "src/tictactoe.rs"
 
+[[bin]]
+name = "icm"
+path = "src/icm.rs"
+
+[[bin]]
+name = "pushfold"
+path = "src/pushfold.rs"
+
+[[bin]]
+name = "kuhn"
+path = "src/kuhn.rs"
+
 [dependencies]
 clap = "4.5.20"
 hashbrown = "0.15.1"
