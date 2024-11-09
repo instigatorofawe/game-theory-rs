@@ -11,7 +11,7 @@ pub enum Tile {
 
 impl Tile {
     /// Computes the numerical representation of the tile
-    pub fn hash(&self) -> u32 {
+    pub fn hash(&self) -> u16 {
         match self {
             Tile::Empty => 0,
             Tile::X => 1,
@@ -32,18 +32,19 @@ impl Display for Tile {
 }
 
 /// A tic-tac-toe board is simply 9 tiles
+#[derive(Clone)]
 pub struct Board {
     tiles: [Tile; 9],
 }
 
 impl Board {
     /// Computes the numerical representation of the current board state
-    pub fn hash(&self) -> u32 {
+    pub fn hash(&self) -> u16 {
         self.tiles.iter().fold(0, |i, x| i * 3 + x.hash())
     }
 
     /// Computes the rotation and reflection invariant representation of the current board state
-    pub fn invariant_hash(&self) -> u32 {
+    pub fn invariant_hash(&self) -> u16 {
         const TRANSFORMATIONS: [[usize; 9]; 8] = [
             [0, 1, 2, 3, 4, 5, 6, 7, 8], // Rotations
             [2, 5, 8, 1, 4, 7, 0, 3, 6],
@@ -139,7 +140,7 @@ impl Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}|{}|{}\n---------\n{}|{}|{}\n---------\n{}|{}|{}\n",
+            "{}|{}|{}\n-----\n{}|{}|{}\n-----\n{}|{}|{}\n",
             self.tiles[0],
             self.tiles[1],
             self.tiles[2],
@@ -154,17 +155,114 @@ impl Display for Board {
 }
 
 /// Minimax solution table
-pub struct SolutionTable {}
+pub struct SolutionTable {
+    value_table: HashMap<u16, i8>,
+}
 
 impl SolutionTable {
+    /// Returns the minimax solution for the current board state, for the player whose turn it is
     fn solve(&mut self, board: &Board) -> usize {
-        todo!()
+        use Tile::*;
+        let empty = board.empty();
+        let values: Vec<i8> = empty
+            .iter()
+            .map(|i| {
+                let mut new_board = (*board).clone();
+                new_board.act(*i);
+                self.eval_recursive(&new_board)
+            })
+            .collect();
+        match board.turn() {
+            X => {
+                // Argmax
+                let (argmax, _) = empty.into_iter().zip(values.into_iter()).fold(
+                    (0 as usize, -9_i8),
+                    |(argmax, max), (index, value)| match max > value {
+                        true => (argmax, max),
+                        false => (index, value),
+                    },
+                );
+                argmax
+            }
+            O => {
+                // Argmin
+                let (argmin, _) = empty.into_iter().zip(values.into_iter()).fold(
+                    (0 as usize, 9_i8),
+                    |(argmin, min), (index, value)| match min < value {
+                        true => (argmin, min),
+                        false => (index, value),
+                    },
+                );
+                argmin
+            }
+            _ => {
+                panic!("Impossible branch, invalid turn");
+            }
+        }
+    }
+
+    /// Computes the minimax value of the current board state
+    fn eval_recursive(&mut self, board: &Board) -> i8 {
+        use Tile::*;
+        let hash = board.invariant_hash();
+        match self.value_table.get(&hash) {
+            // If the current position is in our value table, simply return the value from the hash table
+            Some(x) => *x,
+            None => match board.winner() {
+                // Otherwise, check if we are in a terminal state
+                Some(X) => {
+                    let value = (board.empty().len() + 1) as i8;
+                    self.value_table.insert(hash, value);
+                    value
+                }
+                Some(O) => {
+                    let value = -((board.empty().len() + 1) as i8);
+                    self.value_table.insert(hash, value);
+                    value
+                }
+                _ => {
+                    let empty = board.empty();
+                    match empty.is_empty() {
+                        true => {
+                            let value = 0;
+                            self.value_table.insert(hash, value);
+                            value
+                        }
+                        // Otherwise, compute values for all children
+                        false => {
+                            let children: Vec<Board> = empty
+                                .into_iter()
+                                .map(|i| {
+                                    let mut new_board = (*board).clone();
+                                    new_board.act(i);
+                                    new_board
+                                })
+                                .collect();
+                            let child_values: Vec<i8> = children
+                                .into_iter()
+                                .map(|x| self.eval_recursive(&x))
+                                .collect();
+                            let value = match board.turn() {
+                                X => child_values.into_iter().max().unwrap(),
+                                O => child_values.into_iter().min().unwrap(),
+                                _ => panic!("Impossible branch, invalid turn"),
+                            };
+
+                            self.value_table.insert(hash, value);
+                            value
+                        }
+                    }
+                }
+            },
+        }
     }
 }
 
 impl Default for SolutionTable {
     fn default() -> Self {
-        SolutionTable {}
+        SolutionTable {
+            value_table: HashMap::new(),
+        }
     }
 }
 
@@ -175,7 +273,7 @@ fn main() {
 
     println!("{board}");
 
-    while board.winner() == Some(Tile::Empty) && !board.empty().is_empty() {
+    while board.winner().is_none() && !board.empty().is_empty() {
         if board.turn() == Tile::X {
             let mut input_buffer = String::new();
             let _ = stdin().read_line(&mut input_buffer);
@@ -184,6 +282,7 @@ fn main() {
             // Read input
         } else {
             let argmin = solution.solve(&board);
+            println!("{argmin}");
             board.act(argmin);
         }
 
@@ -265,7 +364,7 @@ mod tests {
     #[test]
     fn test_print() {
         let x = format!("{}", Board::default());
-        assert_eq!(x, " | | \n---------\n | | \n---------\n | | \n");
+        assert_eq!(x, " | | \n-----\n | | \n-----\n | | \n");
     }
 
     #[test]
