@@ -176,7 +176,7 @@ impl SolutionTable {
             X => {
                 // Argmax
                 let (argmax, _) = empty.into_iter().zip(values.into_iter()).fold(
-                    (0 as usize, -9_i8),
+                    (0 as usize, i8::MIN),
                     |(argmax, max), (index, value)| match max > value {
                         true => (argmax, max),
                         false => (index, value),
@@ -187,7 +187,7 @@ impl SolutionTable {
             O => {
                 // Argmin
                 let (argmin, _) = empty.into_iter().zip(values.into_iter()).fold(
-                    (0 as usize, 9_i8),
+                    (0 as usize, i8::MAX),
                     |(argmin, min), (index, value)| match min < value {
                         true => (argmin, min),
                         false => (index, value),
@@ -268,13 +268,24 @@ impl Default for SolutionTable {
 
 fn main() {
     use std::io::stdin;
+    let args: Vec<String> = std::env::args().collect();
+    println!("{:?}", args);
+
+    let player_turn: Tile = match args.get(1) {
+        Some(x) => match x.as_str() {
+            "O" => Tile::O,
+            _ => Tile::X,
+        },
+        None => Tile::O,
+    };
+
     let mut board = Board::default();
     let mut solution = SolutionTable::default();
 
     println!("{board}");
 
     while board.winner().is_none() && !board.empty().is_empty() {
-        if board.turn() == Tile::X {
+        if board.turn() == player_turn {
             let mut input_buffer = String::new();
             let _ = stdin().read_line(&mut input_buffer);
             let i = input_buffer.trim().parse::<usize>().unwrap();
@@ -282,7 +293,6 @@ fn main() {
             // Read input
         } else {
             let argmin = solution.solve(&board);
-            println!("{argmin}");
             board.act(argmin);
         }
 
@@ -385,5 +395,20 @@ mod tests {
             tiles: [X, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty],
         };
         assert_eq!(x.empty(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn test_solver() {
+        use Tile::*;
+        let mut solver = SolutionTable::default();
+        assert_eq!(solver.eval_recursive(&Board::default()), 0); // Theoretical draw
+        assert_eq!(solver.value_table.len(), 765);
+
+        assert_eq!(
+            solver.eval_recursive(&Board {
+                tiles: [X, O, Empty, Empty, Empty, Empty, Empty, Empty, Empty]
+            }),
+            3
+        );
     }
 }
