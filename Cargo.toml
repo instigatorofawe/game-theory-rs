@@ -7,21 +7,5 @@ edition = "2021"
 name = "tictactoe"
 path = "src/tictactoe.rs"
 
-[[bin]]
-name = "kuhn"
-path = "src/kuhn.rs"
-
-[[bin]]
-name = "push-fold"
-path = "src/push_fold.rs"
-
-[[bin]]
-name = "preflop"
-path = "src/preflop_equity.rs"
-
 [dependencies]
-clap = { version = "4.5.15", features = ["derive"] }
-hashbrown = { version = "0.14.5", features = ["rayon"] }
-ndarray = { version = "0.16.0", features = ["rayon"] }
-rayon = "1.10.0"
-rust_poker = "0.1.14"
+hashbrown = "0.15.1"
