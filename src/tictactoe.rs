@@ -1,407 +1,353 @@
 use hashbrown::HashMap;
-use rayon::prelude::*;
 use std::fmt::Display;
-use std::sync::Mutex;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Tile {
-    Empty,
-    X,
-    O,
+/// Number of tiles on the board
+const BOARD_SIZE: usize = 9;
+
+/// Possible winning configurations
+const WIN_LINES: [u16; 8] = [
+    0b111_000_000,
+    0b000_111_000,
+    0b000_000_111,
+    0b100_100_100,
+    0b010_010_010,
+    0b001_001_001,
+    0b100_010_001,
+    0b001_010_100,
+];
+
+/// Rotations and reflections
+const TRANSFORMATIONS: [[usize; 9]; 8] = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8], // Rotations
+    [2, 5, 8, 1, 4, 7, 0, 3, 6],
+    [8, 7, 6, 5, 4, 3, 2, 1, 0],
+    [6, 3, 0, 7, 4, 1, 8, 5, 2],
+    [6, 7, 8, 3, 4, 5, 0, 1, 2], // Reflections
+    [2, 1, 0, 5, 4, 3, 8, 7, 6],
+    [8, 5, 2, 7, 4, 1, 6, 3, 0],
+    [0, 3, 6, 1, 4, 7, 2, 5, 8],
+];
+
+/// Bitboard representation of a tic tac toe board
+#[derive(Clone)]
+struct Board {
+    /// Whether each tile is empty: 0 = empty, 1 = not empty
+    occupied: u16,
+    /// If the tile is not empty, which player occupies the tile: 0 = O, 1 = X
+    player: u16,
 }
 
-impl Display for Tile {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.string())
+impl Default for Board {
+    /// Default value is an empty Board
+    fn default() -> Self {
+        Board {
+            occupied: 0,
+            player: 0,
+        }
     }
+}
+
+/// Possible values of a tile on the board: occupied by an X, O, or Empty
+#[derive(Debug, PartialEq)]
+enum Tile {
+    X,
+    O,
+    Empty,
 }
 
 impl Tile {
-    pub fn string(&self) -> String {
-        use Tile::*;
+    /// String representation of the current tile; can pass a string to represent the empty tile
+    fn str<'a>(&self, empty: Option<&'a str>) -> &'a str {
         match self {
-            Empty => " ".to_string(),
-            X => "X".to_string(),
-            O => "O".to_string(),
+            Tile::X => "X",
+            Tile::O => "O",
+            Tile::Empty => match empty {
+                Some(x) => x,
+                _ => " ",
+            },
         }
     }
 
-    pub fn hash(&self) -> u32 {
-        use Tile::*;
+    /// Computes hash value of the current tile
+    fn hash(&self) -> u16 {
         match self {
-            Empty => 0,
-            X => 1,
-            O => 2,
-        }
-    }
-
-    pub fn from_hash(hash: u32) -> Option<Self> {
-        use Tile::*;
-        match hash {
-            0 => Some(Empty),
-            1 => Some(X),
-            2 => Some(O),
-            _ => None,
+            Tile::Empty => 0,
+            Tile::X => 1,
+            Tile::O => 2,
         }
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Board {
-    tiles: [Tile; 9],
+/// Error type for bound checking for statically sized arrays and other data structures
+#[derive(Debug)]
+enum GameError {
+    OutOfBoundsError,
+    InvalidMoveError,
+}
+
+impl Board {
+    /// Gets the tile at the specified index
+    fn get(&self, index: usize) -> Result<Tile, GameError> {
+        // Bound checking
+        if index > BOARD_SIZE {
+            return Err(GameError::OutOfBoundsError);
+        } else {
+            let occupied = (1 << index) & self.occupied > 0;
+            let player = (1 << index) & self.player > 0;
+
+            match occupied {
+                false => Ok(Tile::Empty),
+                true => match player {
+                    true => Ok(Tile::X),
+                    false => Ok(Tile::O),
+                },
+            }
+        }
+    }
+
+    /// Sets the tile at the specified index
+    fn set(&mut self, index: usize, tile: Tile) -> Result<(), GameError> {
+        // Bound checking
+        if index > BOARD_SIZE {
+            return Err(GameError::OutOfBoundsError);
+        } else {
+            match tile {
+                Tile::Empty => self.occupied &= !(1 << index),
+                Tile::X => {
+                    self.occupied |= 1 << index;
+                    self.player |= 1 << index;
+                }
+                Tile::O => {
+                    self.occupied |= 1 << index;
+                    self.player &= !(1 << index);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// Determines whose turn it is, X or O
+    fn turn(&self) -> Tile {
+        let moves = self.occupied.count_ones();
+        match moves % 2 {
+            0 => Tile::X,
+            _ => Tile::O,
+        }
+    }
+
+    /// Computes the current winner, if there is one
+    fn winner(&self) -> Tile {
+        let x_pos = self.occupied & self.player;
+        let o_pos = self.occupied & !self.player;
+
+        for line in WIN_LINES {
+            if x_pos & line == line {
+                return Tile::X;
+            }
+            if o_pos & line == line {
+                return Tile::O;
+            }
+        }
+        Tile::Empty
+    }
+
+    /// Lists indices of valid moves
+    fn valid_moves(&self) -> Vec<usize> {
+        (0..BOARD_SIZE)
+            .into_iter()
+            .filter(|x| self.occupied & (1 << x) == 0)
+            .collect()
+    }
+
+    /// Tries to set the index to the tile of the player whose turn it is to act
+    fn act(&mut self, index: usize) -> Result<(), GameError> {
+        let current_value = self.get(index)?;
+        match current_value {
+            Tile::Empty => self.set(index, self.turn()),
+            _ => Err(GameError::InvalidMoveError),
+        }
+    }
+
+    /// Computes transformation invariant hash of the current board state
+    fn invariant_hash(&self) -> u16 {
+        let hash_values: Vec<u16> = (0..BOARD_SIZE)
+            .into_iter()
+            .map(|x| self.get(x).expect("Unable to get tile").hash())
+            .collect();
+        TRANSFORMATIONS
+            .iter()
+            .map(|x| x.iter().fold(0, |i, x| i * 3 + hash_values[*x]))
+            .min()
+            .expect("Empty iterator")
+    }
 }
 
 impl Display for Board {
+    /// Print formatted representation of board
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Tile::*;
         write!(
             f,
-            "-------\n|{}|{}|{}|\n-------\n|{}|{}|{}|\n-------\n|{}|{}|{}|\n-------",
-            match self.tiles[0] {
-                Empty => "0".to_string(),
-                _ => self.tiles[0].string(),
-            },
-            match self.tiles[1] {
-                Empty => "1".to_string(),
-                _ => self.tiles[1].string(),
-            },
-            match self.tiles[2] {
-                Empty => "2".to_string(),
-                _ => self.tiles[2].string(),
-            },
-            match self.tiles[3] {
-                Empty => "3".to_string(),
-                _ => self.tiles[3].string(),
-            },
-            match self.tiles[4] {
-                Empty => "4".to_string(),
-                _ => self.tiles[4].string(),
-            },
-            match self.tiles[5] {
-                Empty => "5".to_string(),
-                _ => self.tiles[5].string(),
-            },
-            match self.tiles[6] {
-                Empty => "6".to_string(),
-                _ => self.tiles[6].string(),
-            },
-            match self.tiles[7] {
-                Empty => "7".to_string(),
-                _ => self.tiles[7].string(),
-            },
-            match self.tiles[8] {
-                Empty => "8".to_string(),
-                _ => self.tiles[8].string(),
-            },
+            "{}|{}|{}\n-----\n{}|{}|{}\n-----\n{}|{}|{}\n",
+            self.get(0).expect("Couldn't get tile 0").str(Some("0")),
+            self.get(1).expect("Couldn't get tile 1").str(Some("1")),
+            self.get(2).expect("Couldn't get tile 2").str(Some("2")),
+            self.get(3).expect("Couldn't get tile 3").str(Some("3")),
+            self.get(4).expect("Couldn't get tile 4").str(Some("4")),
+            self.get(5).expect("Couldn't get tile 5").str(Some("5")),
+            self.get(6).expect("Couldn't get tile 6").str(Some("6")),
+            self.get(7).expect("Couldn't get tile 7").str(Some("7")),
+            self.get(8).expect("Couldn't get tile 8").str(Some("8")),
         )
     }
 }
 
-impl Default for Board {
-    fn default() -> Self {
-        use Tile::Empty;
-        Board {
-            tiles: [
-                Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty,
-            ],
-        }
-    }
-}
-
-impl Board {
-    /// Computes board from ternary hash
-    pub fn from_hash(hash: u32) -> Self {
-        let tiles: [Tile; 9] = [0; 9]
-            .into_iter()
-            .scan(hash, |a, _| {
-                let result = Tile::from_hash(*a % 3);
-                *a /= 3;
-                result
-            })
-            .collect::<Vec<Tile>>()
-            .try_into()
-            .unwrap();
-        Board { tiles }
-    }
-
-    /// Computes rotation invariant hash
-    pub fn invariant_hash(&self) -> u32 {
-        let mut hashes = Vec::with_capacity(8);
-        let mut board: Board = self.clone();
-        let mut rotated_hashes: Vec<u32> = [0; 3]
-            .into_iter()
-            .map(|_| {
-                board = board.rotate();
-                board.hash()
-            })
-            .collect();
-        hashes.push(self.hash());
-        hashes.append(&mut rotated_hashes);
-
-        // Reflect vertically, horizontally, and diagonally
-        hashes.push(
-            Board {
-                tiles: [6, 7, 8, 3, 4, 5, 0, 1, 2]
-                    .into_iter()
-                    .map(|i| self.tiles[i].clone())
-                    .collect::<Vec<Tile>>()
-                    .try_into()
-                    .unwrap(),
-            }
-            .hash(),
-        );
-        hashes.push(
-            Board {
-                tiles: [2, 1, 0, 5, 4, 3, 8, 7, 6]
-                    .into_iter()
-                    .map(|i| self.tiles[i].clone())
-                    .collect::<Vec<Tile>>()
-                    .try_into()
-                    .unwrap(),
-            }
-            .hash(),
-        );
-        hashes.push(
-            Board {
-                tiles: [8, 5, 2, 7, 4, 1, 6, 3, 0]
-                    .into_iter()
-                    .map(|i| self.tiles[i].clone())
-                    .collect::<Vec<Tile>>()
-                    .try_into()
-                    .unwrap(),
-            }
-            .hash(),
-        );
-        hashes.push(
-            Board {
-                tiles: [0, 3, 6, 1, 4, 7, 2, 5, 8]
-                    .into_iter()
-                    .map(|i| self.tiles[i].clone())
-                    .collect::<Vec<Tile>>()
-                    .try_into()
-                    .unwrap(),
-            }
-            .hash(),
-        );
-
-        hashes.into_iter().min().unwrap()
-    }
-
-    /// Computes naive ternary hash of board
-    pub fn hash(&self) -> u32 {
-        self.tiles
-            .iter()
-            .enumerate()
-            .map(|(index, tile)| 3_u32.pow(index as u32) * tile.hash())
-            .sum()
-    }
-
-    pub fn get_tiles(&self, indices: Vec<usize>) -> Vec<Tile> {
-        indices.into_iter().map(|i| self.tiles[i].clone()).collect()
-    }
-
-    pub fn rotate(&self) -> Self {
-        Board {
-            tiles: [2, 5, 8, 1, 4, 7, 0, 3, 6]
-                .into_iter()
-                .map(|i| self.tiles[i].clone())
-                .collect::<Vec<Tile>>()
-                .try_into()
-                .unwrap(),
-        }
-    }
-
-    pub fn empty(&self) -> Vec<usize> {
-        use Tile::Empty;
-        let result: Vec<usize> = self
-            .tiles
-            .iter()
-            .enumerate()
-            .filter_map(|(i, x)| match x {
-                Empty => Some(i),
-                _ => None,
-            })
-            .collect();
-        result
-    }
-
-    pub fn turn(&self) -> Tile {
-        use Tile::*;
-        match self.empty().len() % 2 {
-            1 => X,
-            _ => O,
-        }
-    }
-
-    pub fn act(&self, index: usize) -> Self {
-        let mut tiles = self.tiles.clone();
-        tiles[index] = self.turn();
-        Board { tiles }
-    }
-
-    pub fn winner(&self) -> Tile {
-        use Tile::*;
-        if self.empty().len() > 5 {
-            return Empty;
-        }
-
-        [
-            [0, 1, 2],
-            [3, 4, 5],
-            [6, 7, 8],
-            [0, 3, 6],
-            [1, 4, 7],
-            [2, 5, 8],
-            [0, 4, 8],
-            [2, 4, 6],
-        ]
-        .map(|x| {
-            match [
-                self.tiles[x[0]].clone(),
-                self.tiles[x[1]].clone(),
-                self.tiles[x[2]].clone(),
-            ] {
-                [X, X, X] => X,
-                [O, O, O] => O,
-                _ => Empty,
-            }
-        })
-        .into_iter()
-        .fold(Empty, |value, x| match x {
-            Empty => value,
-            _ => x,
-        })
-    }
-}
-
+/// Minimax solution table
 pub struct SolutionTable {
-    value_table: Mutex<HashMap<u32, i8>>,
+    value_table: HashMap<u16, i8>,
+}
+
+impl SolutionTable {
+    /// Returns the minimax solution for the current board state, for the player whose turn it is
+    fn solve(&mut self, board: &Board) -> usize {
+        use Tile::*;
+        let empty = board.valid_moves();
+        let values: Vec<i8> = empty
+            .iter()
+            .map(|i| {
+                let mut new_board = (*board).clone();
+                let _ = new_board.act(*i);
+                self.eval_recursive(&new_board)
+            })
+            .collect();
+        match board.turn() {
+            X => {
+                // Argmax
+                let (argmax, _) = empty.into_iter().zip(values.into_iter()).fold(
+                    (0 as usize, i8::MIN),
+                    |(argmax, max), (index, value)| match max > value {
+                        true => (argmax, max),
+                        false => (index, value),
+                    },
+                );
+                argmax
+            }
+            O => {
+                // Argmin
+                let (argmin, _) = empty.into_iter().zip(values.into_iter()).fold(
+                    (0 as usize, i8::MAX),
+                    |(argmin, min), (index, value)| match min < value {
+                        true => (argmin, min),
+                        false => (index, value),
+                    },
+                );
+                argmin
+            }
+            _ => {
+                panic!("Impossible branch, invalid turn");
+            }
+        }
+    }
+
+    /// Computes the minimax value of the current board state
+    fn eval_recursive(&mut self, board: &Board) -> i8 {
+        use Tile::*;
+        let hash = board.invariant_hash();
+        match self.value_table.get(&hash) {
+            // If the current position is in our value table, simply return the value from the hash table
+            Some(x) => *x,
+            None => match board.winner() {
+                // Otherwise, check if we are in a terminal state
+                X => {
+                    let value = BOARD_SIZE as i8 - board.occupied.count_ones() as i8 + 1;
+                    self.value_table.insert(hash, value);
+                    value
+                }
+                O => {
+                    let value = -(BOARD_SIZE as i8 - board.occupied.count_ones() as i8 + 1);
+                    self.value_table.insert(hash, value);
+                    value
+                }
+                _ => {
+                    let valid_moves = board.valid_moves();
+                    match valid_moves.is_empty() {
+                        true => {
+                            let value = 0;
+                            self.value_table.insert(hash, value);
+                            value
+                        }
+                        // Otherwise, compute values for all children
+                        false => {
+                            let children: Vec<Board> = valid_moves
+                                .into_iter()
+                                .map(|i| {
+                                    let mut new_board = (*board).clone();
+                                    let _ = new_board.act(i);
+                                    new_board
+                                })
+                                .collect();
+                            let child_values: Vec<i8> = children
+                                .into_iter()
+                                .map(|x| self.eval_recursive(&x))
+                                .collect();
+                            let value = match board.turn() {
+                                X => child_values.into_iter().max().unwrap(),
+                                O => child_values.into_iter().min().unwrap(),
+                                _ => panic!("Impossible branch, invalid turn"),
+                            };
+
+                            self.value_table.insert(hash, value);
+                            value
+                        }
+                    }
+                }
+            },
+        }
+    }
 }
 
 impl Default for SolutionTable {
     fn default() -> Self {
-        Self {
-            value_table: Mutex::new(HashMap::new()),
+        SolutionTable {
+            value_table: HashMap::new(),
         }
-    }
-}
-
-impl SolutionTable {
-    /// Builds full solution table
-    pub fn build() -> Self {
-        let result = SolutionTable {
-            value_table: Mutex::new(HashMap::new()),
-        };
-        let root = Board::default();
-        result.evaluate_recursive(root);
-
-        // #[cfg(test)]
-        // println!("{} entries", result.value_table.lock().unwrap().len());
-
-        result
-    }
-
-    fn evaluate_recursive(&self, board: Board) -> i8 {
-        use Tile::*;
-        let hash = board.invariant_hash();
-        let value: Option<i8>;
-        {
-            value = self.value_table.lock().unwrap().get(&hash).copied();
-        }
-
-        match value {
-            Some(x) => x,
-            None => {
-                // Check if leaf node
-                match board.winner() {
-                    X => {
-                        let value = 1;
-                        self.value_table.lock().unwrap().insert(hash, value);
-                        return value;
-                    }
-                    O => {
-                        let value = -1;
-                        self.value_table.lock().unwrap().insert(hash, value);
-                        return value;
-                    }
-                    _ => {
-                        if board.empty().is_empty() {
-                            let value = 0;
-                            self.value_table.lock().unwrap().insert(hash, value);
-                            return value;
-                        }
-                    }
-                }
-
-                // Otherwise evaluate children recursively
-                let children: Vec<Board> =
-                    board.empty().into_iter().map(|i| board.act(i)).collect();
-                let child_values: Vec<i8> = children
-                    .into_par_iter()
-                    .map(|x| self.evaluate_recursive(x))
-                    .collect();
-
-                let value = match board.turn() {
-                    X => child_values.into_iter().max().unwrap(),
-                    O => child_values.into_iter().min().unwrap(),
-                    _ => panic!("Impossible branch, invalid turn"),
-                };
-
-                self.value_table.lock().unwrap().insert(hash, value);
-                value
-            }
-        }
-    }
-
-    pub fn get(&self, invariant_hash: &u32) -> Option<i8> {
-        self.value_table
-            .lock()
-            .unwrap()
-            .get(invariant_hash)
-            .copied()
-    }
-
-    pub fn solve(&mut self, board: &Board) -> usize {
-        use Tile::*;
-        let candidates = board.empty();
-        let candidate_values: Vec<i8> = candidates
-            .par_iter()
-            .map(|i| self.evaluate_recursive(board.act(*i)))
-            .collect();
-
-        let (argmax, _) = candidates.into_iter().zip(candidate_values).fold(
-            (0, 2),
-            |(argmax, max), (index, value)| {
-                if (max > value && board.turn() == X) || (max < value && board.turn() == O) {
-                    (argmax, max)
-                } else {
-                    (index, value)
-                }
-            },
-        );
-        argmax
     }
 }
 
 fn main() {
     use std::io::stdin;
-    use Tile::*;
+    let args: Vec<String> = std::env::args().collect();
+    println!("{:?}", args);
+
+    let player_turn: Tile = match args.get(1) {
+        Some(x) => match x.as_str() {
+            "O" => Tile::O,
+            _ => Tile::X,
+        },
+        None => Tile::X,
+    };
 
     let mut board = Board::default();
     let mut solution = SolutionTable::default();
 
     println!("{board}");
 
-    while board.winner() == Empty && !board.empty().is_empty() {
-        if board.turn() == X {
+    while board.winner() == Tile::Empty && board.occupied.count_ones() < BOARD_SIZE as u32 {
+        if board.turn() == player_turn {
             let mut input_buffer = String::new();
             let _ = stdin().read_line(&mut input_buffer);
-            let i = input_buffer.trim().parse::<usize>().unwrap();
-            board = board.act(i);
+            let i = input_buffer.trim().parse::<usize>();
+            match i {
+                Ok(i) => {
+                    let _ = board.act(i);
+                }
+                _ => {
+                    println!("Invalid move!");
+                }
+            }
             // Read input
         } else {
             let argmin = solution.solve(&board);
-            board = board.act(argmin);
+            let _ = board.act(argmin);
         }
 
         println!("{board}");
@@ -413,106 +359,224 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_hash() {
-        use Tile::*;
-        let board = Board {
-            tiles: [X, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty],
-        };
-        assert_eq!(board.hash(), 1);
-        let x = Board::from_hash(1);
-        assert_eq!(x, board);
-    }
+    fn test_board_get() {
+        for index in 0..BOARD_SIZE {
+            let board_x = Board {
+                occupied: 1 << index,
+                player: 1 << index,
+            };
+            let board_o = Board {
+                occupied: 1 << index,
+                player: !0 & !(1 << index),
+            };
 
-    #[test]
-    fn test_invariant_hash() {
-        use Tile::*;
-        let board = Board {
-            tiles: [X, O, Empty, Empty, X, Empty, Empty, Empty, Empty],
-        };
+            for j in 0..BOARD_SIZE {
+                let result = board_x.get(j);
+                assert!(result.is_ok());
+                match index == j {
+                    false => assert_eq!(result.unwrap(), Tile::Empty),
+                    true => assert_eq!(result.unwrap(), Tile::X),
+                }
 
-        println!("{}", board);
-        let mut rotated_board = board.rotate();
+                let result = board_o.get(j);
+                assert!(result.is_ok());
+                match index == j {
+                    false => assert_eq!(result.unwrap(), Tile::Empty),
+                    true => assert_eq!(result.unwrap(), Tile::O),
+                }
+            }
 
-        for _ in 0..3 {
-            assert_eq!(board.invariant_hash(), rotated_board.invariant_hash());
-            println!("{}", rotated_board);
-            rotated_board = rotated_board.rotate();
+            assert!(board_x.get(BOARD_SIZE + 1).is_err());
         }
     }
 
     #[test]
-    fn test_empty() {
-        use Tile::*;
-        let board = Board {
-            tiles: [X, O, Empty, Empty, X, Empty, Empty, Empty, Empty],
-        };
-
-        assert_eq!(board.empty(), vec![2, 3, 5, 6, 7, 8]);
-    }
-
-    #[test]
-    fn test_evaluate_winner() {
-        use Tile::*;
+    fn test_board_format() {
         let board = Board::default();
-        assert_eq!(board.winner(), Empty);
+        let str: String = format!("{}", board);
+        assert_eq!(str, "0|1|2\n-----\n3|4|5\n-----\n6|7|8\n");
 
         let board = Board {
-            tiles: [X, X, X, O, O, Empty, Empty, Empty, Empty],
+            occupied: 1,
+            player: 1,
         };
-        assert_eq!(board.winner(), X);
+        let str: String = format!("{}", board);
+        assert_eq!(str, "X|1|2\n-----\n3|4|5\n-----\n6|7|8\n");
 
         let board = Board {
-            tiles: [Empty, Empty, Empty, X, X, X, O, O, Empty],
+            occupied: 1 << 5,
+            player: 0,
         };
-        assert_eq!(board.winner(), X);
-
-        let board = Board {
-            tiles: [X, Empty, Empty, Empty, X, X, O, O, O],
-        };
-        assert_eq!(board.winner(), O);
+        let str: String = format!("{}", board);
+        assert_eq!(str, "0|1|2\n-----\n3|4|O\n-----\n6|7|8\n");
     }
 
     #[test]
-    fn test_build_tree() {
-        use Tile::*;
-        let tree = SolutionTable::build();
-        assert_eq!(*tree.value_table.lock().unwrap().get(&0).unwrap(), 0);
-        assert_eq!(
-            *tree
-                .value_table
-                .lock()
-                .unwrap()
-                .get(
-                    &Board {
-                        tiles: [X, X, X, O, O, Empty, Empty, Empty, Empty]
-                    }
-                    .invariant_hash()
-                )
-                .unwrap(),
-            1
-        );
+    fn test_board_turn() {
+        let board = Board::default();
+        assert_eq!(board.turn(), Tile::X);
 
+        let board = Board {
+            occupied: 1,
+            player: 1,
+        };
+        assert_eq!(board.turn(), Tile::O);
+
+        let board = Board {
+            occupied: 3,
+            player: 1,
+        };
+        assert_eq!(board.turn(), Tile::X);
+    }
+
+    #[test]
+    fn test_board_set() {
+        let mut board = Board::default();
+        assert!(board.set(0, Tile::X).is_ok());
+        assert_eq!(board.get(0).expect("Unable to get tile 0"), Tile::X);
+
+        assert!(board.set(1, Tile::X).is_ok());
+        assert_eq!(board.get(1).expect("Unable to get tile 1"), Tile::X);
+
+        assert!(board.set(0, Tile::O).is_ok());
+        assert_eq!(board.get(0).expect("Unable to get tile 0"), Tile::O);
+    }
+
+    #[test]
+    fn test_board_invariant_hash() {
+        // Default position hashes to 0
+        assert_eq!(Board::default().invariant_hash(), 0);
+        // Adding a tile changes hash
+        assert_ne!(
+            Board::default().invariant_hash(),
+            Board {
+                occupied: 0b100_000_000,
+                player: 0
+            }
+            .invariant_hash()
+        );
+        assert_ne!(
+            Board::default().invariant_hash(),
+            Board {
+                occupied: 0b100_000_000,
+                player: 0b100_000_000
+            }
+            .invariant_hash()
+        );
+        // Player matters
+        assert_ne!(
+            Board {
+                occupied: 0b010_000_000,
+                player: 0
+            }
+            .invariant_hash(),
+            Board {
+                occupied: 0b010_000_000,
+                player: 0b010_000_000
+            }
+            .invariant_hash()
+        );
+        // Position matters
+        assert_ne!(
+            Board {
+                occupied: 0b010_000_000,
+                player: 0
+            }
+            .invariant_hash(),
+            Board {
+                occupied: 0b100_000_000,
+                player: 0
+            }
+            .invariant_hash()
+        );
+        // Reflection and rotation invariant
         assert_eq!(
-            *tree
-                .value_table
-                .lock()
-                .unwrap()
-                .get(
-                    &Board {
-                        tiles: [X, Empty, X, O, O, Empty, Empty, Empty, Empty]
-                    }
-                    .invariant_hash()
-                )
-                .unwrap(),
-            1
+            Board {
+                occupied: 0b100_000_000,
+                player: 0
+            }
+            .invariant_hash(),
+            Board {
+                occupied: 0b001_000_000,
+                player: 0
+            }
+            .invariant_hash()
+        );
+        assert_eq!(
+            Board {
+                occupied: 0b100_000_000,
+                player: 0
+            }
+            .invariant_hash(),
+            Board {
+                occupied: 0b000_000_001,
+                player: 0
+            }
+            .invariant_hash()
+        );
+        // More complicated positions
+        assert_eq!(
+            Board {
+                occupied: 0b110_000_000,
+                player: 0b100_000_000
+            }
+            .invariant_hash(),
+            Board {
+                occupied: 0b011_000_000,
+                player: 0b001_000_000
+            }
+            .invariant_hash()
         );
     }
 
     #[test]
-    fn benchmark_build() {
-        use std::time::Instant;
-        let start = Instant::now();
-        let tree = SolutionTable::build();
-        println!("{:?}", start.elapsed());
+    fn test_board_winner() {
+        assert_eq!(Board::default().winner(), Tile::Empty);
+        for line in WIN_LINES {
+            let board = Board {
+                occupied: line,
+                player: line,
+            };
+            assert_eq!(board.winner(), Tile::X);
+
+            let board = Board {
+                occupied: line,
+                player: !line,
+            };
+            assert_eq!(board.winner(), Tile::O);
+        }
+    }
+
+    #[test]
+    fn test_board_valid_moves() {
+        assert_eq!(
+            Board::default().valid_moves(),
+            (0..BOARD_SIZE).collect::<Vec<_>>()
+        );
+        for i in 0..BOARD_SIZE {
+            assert_eq!(
+                Board {
+                    occupied: !(1 << i),
+                    player: 0
+                }
+                .valid_moves(),
+                vec![i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_solver() {
+        let mut solver = SolutionTable::default();
+        assert_eq!(solver.eval_recursive(&Board::default()), 0); // Theoretical draw
+        assert_eq!(solver.value_table.len(), 765);
+
+        assert_eq!(
+            solver.eval_recursive(&Board {
+                occupied: 0b110_000_000,
+                player: 0b100_000_000
+            }),
+            3 // Win for X
+        );
     }
 }
