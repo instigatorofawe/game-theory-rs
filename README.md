@@ -7,7 +7,6 @@ An implementation of various solution concepts (minimax, Nash) for some toy game
 - Kuhn Poker: CFR
 - No Limit Texas Hold'Em
     - Push-fold preflop solver
+    - ICM calculator
 
 ## Planned
-- No Limit Texas Hold'Em
-    - ICM calculator

@@ -1,6 +1,6 @@
 [package]
 name = "game-theory-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [[bin]]
@@ -18,6 +18,10 @@ path = "src/push_fold.rs"
 [[bin]]
 name = "preflop"
 path = "src/preflop_equity.rs"
+
+[[bin]]
+name = "icm"
+path = "src/icm.rs"
 
 [dependencies]
 clap = { version = "4.5.15", features = ["derive"] }
